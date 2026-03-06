@@ -13,8 +13,8 @@ let theme = null;
 let defaultTheme = null; // deep copy of the original default theme
 let colorEntries = []; // detected color fields
 let mode = _savedPrefs?.mode === 'light' ? 'light' : 'dark';
-let globalLinked = true; // global link default
-const linkedState = {}; // per-color link overrides: { colorName: bool }
+let globalLinked = _savedPrefs?.globalLinked !== false; // global link default (true)
+const linkedState = Object.assign({}, _savedPrefs?.linkedState); // per-color link overrides
 
 // ── DOM References ─────────────────────────────────────
 const editorContent = document.getElementById('editor-content');
@@ -28,6 +28,8 @@ const fileInput = document.getElementById('file-input');
 // Apply saved prefs to DOM immediately (prevents flash)
 btnLight.classList.toggle('active', mode === 'light');
 btnDark.classList.toggle('active', mode === 'dark');
+btnGlobalLink.classList.toggle('linked', globalLinked);
+btnGlobalLink.title = globalLinked ? 'All colors linked (light = dark)' : 'Colors independent';
 
 // Apply saved preview visibility immediately
 if (_savedPrefs && typeof _savedPrefs.previewVisible === 'boolean') {
@@ -117,7 +119,9 @@ function saveState() {
 }
 
 function savePrefs() {
-  localStorage.setItem(PREFS_KEY, JSON.stringify({ previewVisible, mode }));
+  localStorage.setItem(PREFS_KEY, JSON.stringify({
+    previewVisible, mode, globalLinked, linkedState
+  }));
 }
 
 function loadSavedState() {
@@ -173,6 +177,7 @@ function toggleLinked(colorName) {
   const current = isLinked(colorName);
   linkedState[colorName] = !current;
   updateLinkButton(colorName);
+  savePrefs();
 }
 
 function setGlobalLinked(linked) {
@@ -183,6 +188,7 @@ function setGlobalLinked(linked) {
   btnGlobalLink.title = globalLinked ? 'All colors linked (light = dark)' : 'Colors independent';
   // Update all per-row link buttons
   colorEntries.forEach(c => updateLinkButton(c.name));
+  savePrefs();
 }
 
 function updateLinkButton(colorName) {
@@ -356,10 +362,14 @@ function resetToDefaults() {
 
   theme = JSON.parse(JSON.stringify(defaultTheme));
   colorEntries = detectColors(theme);
-  // Clear link overrides
+  // Clear link overrides and reset global
+  globalLinked = true;
   for (const key in linkedState) delete linkedState[key];
+  btnGlobalLink.classList.toggle('linked', globalLinked);
+  btnGlobalLink.title = 'All colors linked (light = dark)';
   buildEditor();
   clearSavedState();
+  savePrefs();
 }
 
 btnReset.addEventListener('click', resetToDefaults);
@@ -374,9 +384,14 @@ function loadThemeFromJSON(json) {
   }
   theme = json;
   colorEntries = colors;
+  // Reset link state for fresh import
+  globalLinked = true;
   for (const key in linkedState) delete linkedState[key];
+  btnGlobalLink.classList.toggle('linked', globalLinked);
+  btnGlobalLink.title = 'All colors linked (light = dark)';
   buildEditor();
   saveState();
+  savePrefs();
   console.log(`Imported theme with ${colors.length} colors`);
 }
 
@@ -436,9 +451,8 @@ async function init() {
     colorEntries = detectColors(theme);
     console.log(`Loaded ${colorEntries.length} colors${saved ? ' (from saved state)' : ' (defaults)'}`);
 
-    // Mode and preview already restored from _savedPrefs at top level
+    // Mode, preview, and link state already restored from _savedPrefs at top level
     setMode(mode);
-    setGlobalLinked(true);
     buildEditor();
   } catch (err) {
     console.error('Failed to initialize editor:', err);

@@ -121,6 +121,31 @@ html, body {
   color: var(--ui-accent);
 }
 
+/* Mobile toolbar */
+@media (max-width: 768px) {
+  .toolbar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 10px 16px;
+    gap: 8px;
+  }
+
+  .toolbar-title {
+    width: 100%;
+  }
+
+  .toolbar-actions {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .btn {
+    white-space: nowrap;
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+}
+
 /* Workspace */
 .workspace {
   display: flex;

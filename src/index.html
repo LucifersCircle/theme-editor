@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paperback Theme Editor</title>
+  <link rel="stylesheet" href="layout.css">
+  <link rel="stylesheet" href="preview.css">
+</head>
+<body>
+  <header class="toolbar">
+    <h1 class="toolbar-title">Paperback Theme Editor</h1>
+    <div class="toolbar-actions">
+      <button id="btn-reset" class="btn btn-reset">Reset to Defaults</button>
+      <button id="btn-import" class="btn">Import .pbcolors</button>
+      <button id="btn-export" class="btn">Export .pbcolors</button>
+      <input type="file" id="file-input" accept=".pbcolors" hidden>
+    </div>
+  </header>
+
+  <main class="workspace preview-hidden">
+    <section class="panel editor-panel">
+      <div class="panel-header">
+        <h2>Editor</h2>
+        <div class="editor-controls">
+          <button id="btn-global-link" class="global-link-btn linked" title="All colors linked (light = dark)"></button>
+          <div class="mode-toggle">
+            <button id="btn-light" class="mode-btn">Light</button>
+            <button id="btn-dark" class="mode-btn active">Dark</button>
+          </div>
+          <button id="btn-preview-toggle" class="preview-toggle-btn" title="Show preview panel"></button>
+        </div>
+      </div>
+      <div id="editor-content" class="panel-body">
+        <!-- Color pickers will be generated here -->
+      </div>
+    </section>
+
+    <section class="panel preview-panel collapsed">
+      <div class="panel-header">
+        <h2>Preview</h2>
+      </div>
+      <div id="preview-content" class="panel-body">
+        <!-- Preview components will be loaded here -->
+      </div>
+    </section>
+  </main>
+
+  <script src="editor.js"></script>
+</body>
+</html>

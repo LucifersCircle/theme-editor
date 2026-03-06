@@ -15,6 +15,8 @@ let colorEntries = []; // detected color fields
 let mode = _savedPrefs?.mode === 'light' ? 'light' : 'dark';
 let globalLinked = _savedPrefs?.globalLinked !== false; // global link default (true)
 const linkedState = Object.assign({}, _savedPrefs?.linkedState); // per-color link overrides
+let selectedDefaultId = _savedPrefs?.selectedDefaultId || 0; // index into themeManifest
+let themeManifest = [];
 
 // ── DOM References ─────────────────────────────────────
 const editorContent = document.getElementById('editor-content');
@@ -22,6 +24,8 @@ const btnLight = document.getElementById('btn-light');
 const btnDark = document.getElementById('btn-dark');
 const btnGlobalLink = document.getElementById('btn-global-link');
 const btnReset = document.getElementById('btn-reset');
+const btnResetToggle = document.getElementById('btn-reset-toggle');
+const resetDropdown = document.getElementById('reset-dropdown');
 const btnImport = document.getElementById('btn-import');
 const fileInput = document.getElementById('file-input');
 
@@ -120,7 +124,7 @@ function saveState() {
 
 function savePrefs() {
   localStorage.setItem(PREFS_KEY, JSON.stringify({
-    previewVisible, mode, globalLinked, linkedState
+    previewVisible, mode, globalLinked, linkedState, selectedDefaultId
   }));
 }
 
@@ -152,11 +156,63 @@ function clearSavedState() {
 
 // ── Theme Loading ──────────────────────────────────────
 
-async function loadDefaultTheme() {
-  const resp = await fetch('themes/default.pbcolors');
-  if (!resp.ok) throw new Error('Failed to load default theme');
+async function loadManifest() {
+  const resp = await fetch('themes/index.json');
+  if (!resp.ok) throw new Error('Failed to load theme manifest');
   return resp.json();
 }
+
+async function loadThemeFile(filename) {
+  const resp = await fetch('themes/' + filename);
+  if (!resp.ok) throw new Error('Failed to load theme: ' + filename);
+  return resp.json();
+}
+
+// ── Reset Dropdown ──────────────────────────────────────
+
+function buildResetDropdown() {
+  resetDropdown.innerHTML = '';
+  themeManifest.forEach((entry, i) => {
+    const item = document.createElement('button');
+    item.className = 'split-dropdown-item';
+    if (i === selectedDefaultId) item.classList.add('active');
+    item.textContent = entry.label;
+    item.addEventListener('click', () => selectDefault(i));
+    resetDropdown.appendChild(item);
+  });
+}
+
+function updateResetLabel() {
+  const label = themeManifest[selectedDefaultId]?.label || 'defaults';
+  btnReset.textContent = 'Reset to: ' + label;
+}
+
+async function selectDefault(index) {
+  selectedDefaultId = index;
+  updateResetLabel();
+  resetDropdown.classList.add('hidden');
+  // Update active state in dropdown
+  resetDropdown.querySelectorAll('.split-dropdown-item').forEach((el, i) => {
+    el.classList.toggle('active', i === index);
+  });
+  // Load the newly selected default theme
+  try {
+    const data = await loadThemeFile(themeManifest[index].file);
+    defaultTheme = JSON.parse(JSON.stringify(data));
+  } catch (err) {
+    console.error('Failed to load selected default:', err);
+  }
+  savePrefs();
+}
+
+btnResetToggle.addEventListener('click', (e) => {
+  e.stopPropagation();
+  resetDropdown.classList.toggle('hidden');
+});
+
+document.addEventListener('click', () => {
+  resetDropdown.classList.add('hidden');
+});
 
 function modeKey() {
   return mode === 'dark' ? 'darkColor' : 'lightColor';
@@ -358,7 +414,8 @@ btnPreviewToggle.addEventListener('click', () => setPreviewVisible(!previewVisib
 
 function resetToDefaults() {
   if (!defaultTheme) return;
-  if (!confirm('Reset all colors to the original defaults?')) return;
+  const label = themeManifest[selectedDefaultId]?.label || 'defaults';
+  if (!confirm(`Reset all colors to ${label}?`)) return;
 
   theme = JSON.parse(JSON.stringify(defaultTheme));
   colorEntries = detectColors(theme);
@@ -441,8 +498,14 @@ btnExport.addEventListener('click', exportTheme);
 
 async function init() {
   try {
-    // Always load default for the reset feature
-    const defaultData = await loadDefaultTheme();
+    // Load theme manifest and build dropdown
+    themeManifest = await loadManifest();
+    if (selectedDefaultId >= themeManifest.length) selectedDefaultId = 0;
+    buildResetDropdown();
+    updateResetLabel();
+
+    // Load selected default theme for the reset feature
+    const defaultData = await loadThemeFile(themeManifest[selectedDefaultId].file);
     defaultTheme = JSON.parse(JSON.stringify(defaultData));
 
     // Use saved state if available, otherwise default

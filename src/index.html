@@ -11,7 +11,13 @@
   <header class="toolbar">
     <h1 class="toolbar-title">Paperback Theme Editor</h1>
     <div class="toolbar-actions">
-      <button id="btn-reset" class="btn btn-reset">Reset to Defaults</button>
+      <div class="split-btn" id="reset-group">
+        <button id="btn-reset" class="btn split-btn-main">Reset to: .9 default</button>
+        <button id="btn-reset-toggle" class="btn split-btn-toggle">&#9662;</button>
+        <div id="reset-dropdown" class="split-dropdown hidden">
+          <!-- populated by JS from manifest -->
+        </div>
+      </div>
       <button id="btn-import" class="btn">Import .pbcolors</button>
       <button id="btn-export" class="btn">Export .pbcolors</button>
       <input type="file" id="file-input" accept=".pbcolors" hidden>

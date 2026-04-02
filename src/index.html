@@ -52,6 +52,41 @@
     </section>
   </main>
 
-  <script src="editor.js"></script>
+  <script>
+    (() => {
+      let prefs = null;
+
+      try {
+        const saved = localStorage.getItem('theme-editor-prefs');
+        prefs = saved ? JSON.parse(saved) : null;
+      } catch {
+        prefs = null;
+      }
+
+      window.__themeEditorBootPrefs = prefs;
+
+      const mode = prefs?.mode === 'light' ? 'light' : 'dark';
+      const globalLinked = prefs?.globalLinked !== false;
+      const previewVisible = prefs?.previewVisible === true;
+
+      const btnLight = document.getElementById('btn-light');
+      const btnDark = document.getElementById('btn-dark');
+      const btnGlobalLink = document.getElementById('btn-global-link');
+      const btnPreviewToggle = document.getElementById('btn-preview-toggle');
+      const previewPanel = document.querySelector('.preview-panel');
+      const workspace = document.querySelector('.workspace');
+
+      btnLight.classList.toggle('active', mode === 'light');
+      btnDark.classList.toggle('active', mode === 'dark');
+      btnGlobalLink.classList.toggle('linked', globalLinked);
+      btnGlobalLink.title = globalLinked ? 'All colors linked (light = dark)' : 'Colors independent';
+
+      previewPanel.classList.toggle('collapsed', !previewVisible);
+      workspace.classList.toggle('preview-hidden', !previewVisible);
+      btnPreviewToggle.classList.toggle('active', previewVisible);
+      btnPreviewToggle.title = previewVisible ? 'Hide preview panel' : 'Show preview panel';
+    })();
+  </script>
+  <script type="module" src="editor.js"></script>
 </body>
 </html>

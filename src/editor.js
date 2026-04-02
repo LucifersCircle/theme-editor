@@ -142,6 +142,10 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function keyAttr(keys) {
+  return ` data-linked-keys="${keys.map(escapeHtml).join(',')}"`;
+}
+
 // ── Color Detection ────────────────────────────────────
 
 function isColorObject(obj) {
@@ -239,56 +243,177 @@ function applyPreviewVariables(root) {
   });
 }
 
+function getLinkedKeys(element) {
+  if (!element) return [];
+  if (element.dataset?.color) return [element.dataset.color];
+  if (!element.dataset?.linkedKeys) return [];
+  return element.dataset.linkedKeys
+    .split(',')
+    .map(key => key.trim())
+    .filter(Boolean);
+}
+
+function normalizeHoverNode(node) {
+  if (node instanceof Element) return node;
+  return node?.parentElement || null;
+}
+
+function getLinkedHoverHost(node) {
+  const element = normalizeHoverNode(node);
+  return element?.closest('.color-row[data-color], [data-linked-keys]') || null;
+}
+
+function updateHoverHighlights(keys) {
+  const activeKeys = new Set(keys);
+
+  document.querySelectorAll('.color-row[data-color]').forEach(row => {
+    row.classList.toggle('linked-hover', activeKeys.has(row.dataset.color));
+  });
+
+  previewContent.querySelectorAll('[data-linked-keys]').forEach(block => {
+    const blockKeys = getLinkedKeys(block);
+    const matches = blockKeys.some(key => activeKeys.has(key));
+    block.classList.toggle('linked-hover', matches);
+  });
+}
+
+function clearHoverHighlights() {
+  updateHoverHighlights([]);
+}
+
+function handleLinkedHoverStart(event) {
+  const host = getLinkedHoverHost(event.target);
+  if (!host) return;
+  const related = normalizeHoverNode(event.relatedTarget);
+  if (related && host.contains(related)) return;
+  updateHoverHighlights(getLinkedKeys(host));
+}
+
+function handleLinkedHoverEnd(event) {
+  const host = getLinkedHoverHost(event.target);
+  if (!host) return;
+  const related = normalizeHoverNode(event.relatedTarget);
+  if (related && host.contains(related)) return;
+
+  const nextHost = getLinkedHoverHost(related);
+  if (nextHost) {
+    updateHoverHighlights(getLinkedKeys(nextHost));
+    return;
+  }
+
+  clearHoverHighlights();
+}
+
 function buildV09PreviewMarkup() {
   return `
-    <section class="preview-showcase preview-v09">
-      <div class="preview-device">
-        <header class="preview-header">
-          <div>
-            <span class="preview-kicker">background / foreground / accent</span>
-            <h4>Paperback .9 semantic keys</h4>
-            <p>Basic placeholders for every semantic token in the current mode.</p>
-          </div>
-          <span class="preview-chip preview-chip-accent">accent</span>
-        </header>
-
-        <article class="preview-card">
-          <div class="preview-card-top">
-            <div>
-              <span class="preview-kicker">foreground / border / text</span>
-              <h4>Surface card</h4>
-              <p>Primary, secondary, and tertiary text all update live from the editor.</p>
-            </div>
-            <span class="preview-chip preview-chip-secondary">secondary</span>
-          </div>
-
-          <div class="preview-action-row">
-            <button type="button" class="preview-button preview-button-primary">primary + primaryText</button>
-            <button type="button" class="preview-button preview-button-alert">alert + alertText</button>
-          </div>
-
-          <div class="preview-list">
-            <div class="preview-list-item">
-              <div class="preview-list-copy">
-                <strong>tertiary / tertiaryText</strong>
-                <p>List item surfaces and body copy use the semantic token set.</p>
+    <section class="preview-showcase preview-v09"${keyAttr(['background'])}>
+      <div class="preview-device preview-v09-device">
+        <div class="preview-v09-grid">
+          <section class="preview-v09-panel preview-v09-library"${keyAttr(['background'])}>
+            <div class="preview-v09-panel-head">
+              <div class="preview-v09-nav-item">
+                <span class="preview-v09-nav-icon"${keyAttr(['accent'])}></span>
+                <span${keyAttr(['text'])}>Library</span>
               </div>
-              <span class="preview-list-tag">secondaryText</span>
-            </div>
-            <div class="preview-list-item">
-              <div class="preview-list-copy">
-                <strong>separator</strong>
-                <p>Rows are divided with the current separator color.</p>
+              <div class="preview-v09-nav-item">
+                <span class="preview-v09-nav-icon"${keyAttr(['accent'])}></span>
+                <span${keyAttr(['text'])}>Discover</span>
               </div>
-              <span class="preview-list-tag">textTertiary</span>
             </div>
-          </div>
 
-          <div class="preview-overlay">
-            <strong>overlay</strong>
-            <span>Temporary scrim / overlay treatment.</span>
-          </div>
-        </article>
+            <article class="preview-v09-card preview-v09-chapter-card"${keyAttr(['foreground'])}>
+              <span class="preview-v09-badge"${keyAttr(['accent', 'alertText'])}>NEW</span>
+
+              <div class="preview-v09-card-head">
+                <div>
+                  <h4${keyAttr(['text'])}>Chapter list</h4>
+                  <p${keyAttr(['textSecondary'])}>Title, scanlator, upload age, and badges.</p>
+                </div>
+              </div>
+
+              <div class="preview-v09-chapter-row">
+                <span class="preview-v09-language"${keyAttr(['textTertiary'])}>EN</span>
+                <div class="preview-v09-copy">
+                  <strong${keyAttr(['text'])}>Chapter 15 · A Starting Point</strong>
+                  <span${keyAttr(['textSecondary'])}>scanlator • 2 days ago</span>
+                </div>
+              </div>
+            </article>
+          </section>
+
+          <section class="preview-v09-panel preview-v09-details"${keyAttr(['background'])}>
+            <div class="preview-v09-cover"${keyAttr(['foreground'])}>
+              <div class="preview-v09-cover-art"></div>
+              <div class="preview-v09-divider"${keyAttr(['separator'])}></div>
+            </div>
+
+            <article class="preview-v09-card preview-v09-details-card"${keyAttr(['foreground'])}>
+              <div class="preview-v09-card-head">
+                <div>
+                  <h4${keyAttr(['text'])}>Manga details</h4>
+                  <p${keyAttr(['textSecondary'])}>Description surface, tags, and status chips.</p>
+                </div>
+              </div>
+
+              <p class="preview-v09-description"${keyAttr(['text'])}>
+                Description text sits on the foreground card while metadata chips layer on top.
+              </p>
+
+              <div class="preview-v09-chip-row">
+                <span class="preview-v09-meta-chip"${keyAttr(['foreground', 'textSecondary'])}>Ongoing</span>
+                <span class="preview-v09-meta-chip"${keyAttr(['foreground', 'textSecondary'])}>Safe</span>
+                <span class="preview-v09-meta-chip"${keyAttr(['foreground', 'textSecondary'])}>Action</span>
+              </div>
+
+              <div class="preview-v09-action-row">
+                <button type="button" class="preview-button preview-button-primary"${keyAttr(['primary', 'primaryText'])}>Continue</button>
+                <button type="button" class="preview-button preview-v09-button-secondary"${keyAttr(['secondary', 'secondaryText'])}>Bookmark</button>
+                <button type="button" class="preview-button preview-v09-button-secondary"${keyAttr(['secondary', 'secondaryText'])}>Track</button>
+              </div>
+            </article>
+          </section>
+
+          <section class="preview-v09-panel preview-v09-reader"${keyAttr(['background'])}>
+            <article class="preview-v09-reader-stage">
+              <div class="preview-v09-reader-media"></div>
+              <div class="preview-v09-reader-box"${keyAttr(['border'])}>
+                <strong${keyAttr(['text'])}>Chapter 15</strong>
+                <span${keyAttr(['textSecondary'])}>Left off at page 11</span>
+              </div>
+              <div class="preview-v09-reader-controls">
+                <button type="button" class="preview-v09-reader-button"${keyAttr(['border'])}></button>
+                <button type="button" class="preview-v09-reader-button"${keyAttr(['border'])}></button>
+              </div>
+              <div class="preview-v09-reader-flash"${keyAttr(['overlay'])}></div>
+            </article>
+          </section>
+
+          <section class="preview-v09-panel preview-v09-stubs"${keyAttr(['background'])}>
+            <div class="preview-v09-card preview-v09-stub-card">
+              <div class="preview-v09-card-head">
+                <div>
+                  <h4${keyAttr(['text'])}>Stub components</h4>
+                  <p${keyAttr(['textSecondary'])}>Low-confidence keys parked here until app mapping is confirmed.</p>
+                </div>
+              </div>
+
+              <div class="preview-v09-stub-grid">
+                <article class="preview-v09-stub"${keyAttr(['tertiary'])}>
+                  <span class="preview-v09-stub-label">Stub surface</span>
+                  <strong>tertiary</strong>
+                </article>
+                <article class="preview-v09-stub"${keyAttr(['tertiaryText'])}>
+                  <span class="preview-v09-stub-label">Stub text</span>
+                  <strong>tertiaryText</strong>
+                </article>
+                <article class="preview-v09-stub preview-v09-stub-alert"${keyAttr(['alert'])}>
+                  <span class="preview-v09-stub-label">Stub fill</span>
+                  <strong>alert</strong>
+                </article>
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
     </section>
   `;
@@ -296,32 +421,32 @@ function buildV09PreviewMarkup() {
 
 function buildV08PreviewMarkup() {
   return `
-    <section class="preview-showcase preview-v08">
+    <section class="preview-showcase preview-v08"${keyAttr(['backgroundColor'])}>
       <div class="preview-legacy-device">
-        <span class="preview-banner">accentColorLight + accentTextColor</span>
+        <span class="preview-banner"${keyAttr(['accentColorLight', 'accentTextColor'])}>accentColorLight + accentTextColor</span>
 
-        <article class="preview-legacy-card">
+        <article class="preview-legacy-card"${keyAttr(['foregroundColor', 'borderColor'])}>
           <div class="preview-legacy-top">
             <div class="preview-legacy-copy">
-              <span class="preview-legacy-supertitle">supertitleTextColor</span>
-              <h4>Paperback .8 legacy keys</h4>
-              <p>Legacy button, border, and text tokens are rendered from the loaded theme.</p>
+              <span class="preview-legacy-supertitle"${keyAttr(['supertitleTextColor'])}>supertitleTextColor</span>
+              <h4${keyAttr(['titleTextColor'])}>Paperback .8 legacy keys</h4>
+              <p class="preview-legacy-subtitle"${keyAttr(['subtitleTextColor'])}>Legacy button, border, and text tokens are rendered from the loaded theme.</p>
             </div>
             <div class="preview-button-row">
-              <button type="button" class="preview-button preview-button-normal">buttonNormal*</button>
-              <button type="button" class="preview-button preview-button-selected">buttonSelected*</button>
+              <button type="button" class="preview-button preview-button-normal"${keyAttr(['buttonNormalBackgroundColor', 'buttonNormalBorderColor', 'buttonNormalTextColor'])}>buttonNormal*</button>
+              <button type="button" class="preview-button preview-button-selected"${keyAttr(['buttonSelectedBackgroundColor', 'buttonSelectedBorderColor', 'buttonSelectedTextColor'])}>buttonSelected*</button>
             </div>
           </div>
 
-          <div class="preview-legacy-notes">
-            <p>titleTextColor / subtitleTextColor / bodyTextColor define this text stack.</p>
-            <div class="preview-accent-rail"></div>
-            <p>accentColor and accentColorLight now have dedicated placeholder treatments.</p>
+          <div class="preview-legacy-notes"${keyAttr(['separatorColor'])}>
+            <p class="preview-legacy-body"${keyAttr(['bodyTextColor'])}>titleTextColor / subtitleTextColor / bodyTextColor define this text stack.</p>
+            <div class="preview-accent-rail"${keyAttr(['accentColor', 'accentColorLight'])}></div>
+            <p class="preview-legacy-subtitle"${keyAttr(['subtitleTextColor'])}>accentColor and accentColorLight now have dedicated placeholder treatments.</p>
           </div>
         </article>
 
-        <div class="preview-overlay">
-          overlayColor with separatorColor and borderColor around the content shell.
+        <div class="preview-overlay"${keyAttr(['overlayColor'])}>
+          <span${keyAttr(['accentTextColor'])}>overlayColor with separatorColor and borderColor around the content shell.</span>
         </div>
       </div>
     </section>
@@ -331,11 +456,11 @@ function buildV08PreviewMarkup() {
 function buildFallbackPreviewMarkup() {
   const keys = colorEntries.map(entry => entry.name);
   return `
-    <section class="preview-showcase preview-fallback">
+    <section class="preview-showcase preview-fallback"${keyAttr(keys)}>
       <h4>Custom key set</h4>
       <p>The loaded theme does not match the bundled .8 or .9 defaults closely enough to pick a dedicated component layout yet.</p>
       <div class="preview-key-list">
-        ${keys.map(key => `<span class="preview-key-chip">${escapeHtml(key)}</span>`).join('')}
+        ${keys.map(key => `<span class="preview-key-chip"${keyAttr([key])}>${escapeHtml(key)}</span>`).join('')}
       </div>
     </section>
   `;
@@ -351,6 +476,7 @@ function buildPreviewTokens() {
     const color = entry[modeKey()];
     const token = document.createElement('article');
     token.className = 'preview-token';
+    token.dataset.linkedKeys = entry.name;
 
     const swatch = document.createElement('div');
     swatch.className = 'preview-token-swatch';
@@ -405,6 +531,11 @@ function renderPreview() {
   summary.textContent = `${colorEntries.length} keys in ${mode} mode`;
   buildPreviewTokens();
 }
+
+editorContent.addEventListener('mouseover', handleLinkedHoverStart);
+editorContent.addEventListener('mouseout', handleLinkedHoverEnd);
+previewContent.addEventListener('mouseover', handleLinkedHoverStart);
+previewContent.addEventListener('mouseout', handleLinkedHoverEnd);
 
 // ── Local Persistence ──────────────────────────────────
 

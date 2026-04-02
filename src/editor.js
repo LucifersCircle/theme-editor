@@ -28,6 +28,50 @@ const btnResetToggle = document.getElementById('btn-reset-toggle');
 const resetDropdown = document.getElementById('reset-dropdown');
 const btnImport = document.getElementById('btn-import');
 const fileInput = document.getElementById('file-input');
+const previewContent = document.getElementById('preview-content');
+
+let previewTemplateLoaded = false;
+
+const V09_PREVIEW_KEYS = [
+  'accent',
+  'alert',
+  'alertText',
+  'background',
+  'border',
+  'foreground',
+  'overlay',
+  'primary',
+  'primaryText',
+  'secondary',
+  'secondaryText',
+  'separator',
+  'tertiary',
+  'tertiaryText',
+  'text',
+  'textSecondary',
+  'textTertiary'
+];
+
+const V08_PREVIEW_KEYS = [
+  'accentColor',
+  'accentColorLight',
+  'accentTextColor',
+  'backgroundColor',
+  'bodyTextColor',
+  'borderColor',
+  'buttonNormalBackgroundColor',
+  'buttonNormalBorderColor',
+  'buttonNormalTextColor',
+  'buttonSelectedBackgroundColor',
+  'buttonSelectedBorderColor',
+  'buttonSelectedTextColor',
+  'foregroundColor',
+  'overlayColor',
+  'separatorColor',
+  'subtitleTextColor',
+  'supertitleTextColor',
+  'titleTextColor'
+];
 
 // Apply saved prefs to DOM immediately (prevents flash)
 btnLight.classList.toggle('active', mode === 'light');
@@ -85,6 +129,19 @@ function rgbaToCss(color) {
   return a === 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${a})`;
 }
 
+function camelToKebab(value) {
+  return value.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+
+function escapeHtml(value) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ── Color Detection ────────────────────────────────────
 
 function isColorObject(obj) {
@@ -110,6 +167,243 @@ function detectColors(themeObj) {
     }
   }
   return colors;
+}
+
+// ── Preview Rendering ──────────────────────────────────
+
+function getPreviewTemplateFallback() {
+  return `
+    <section class="preview-shell" data-preview-root>
+      <div class="preview-intro">
+        <div class="preview-intro-copy">
+          <span class="preview-family-badge" data-preview-family-badge>Preview fallback</span>
+          <h3>Component Sandbox</h3>
+          <p data-preview-family-note>Template fetch failed. Using inline preview markup.</p>
+        </div>
+        <div class="preview-meta">
+          <span class="preview-meta-label">Live bindings</span>
+          <strong>Editor changes apply instantly</strong>
+          <span>Imported themes swap the component set automatically.</span>
+        </div>
+      </div>
+      <div class="preview-stage" data-preview-stage></div>
+      <section class="preview-token-section">
+        <div class="preview-token-header">
+          <div>
+            <span class="preview-token-label">Loaded keys</span>
+            <h3>Token coverage</h3>
+          </div>
+          <p data-preview-token-summary></p>
+        </div>
+        <div class="preview-token-grid" data-preview-token-grid></div>
+      </section>
+    </section>
+  `;
+}
+
+async function loadPreviewTemplate() {
+  if (previewTemplateLoaded) return;
+
+  try {
+    const resp = await fetch('components/preview.html');
+    if (!resp.ok) throw new Error('Failed to load preview template');
+    previewContent.innerHTML = await resp.text();
+  } catch (err) {
+    console.error('Failed to load preview template:', err);
+    previewContent.innerHTML = getPreviewTemplateFallback();
+  }
+
+  previewTemplateLoaded = true;
+}
+
+function scorePreviewFamily(keys, familyKeys) {
+  return familyKeys.reduce((count, key) => count + (keys.includes(key) ? 1 : 0), 0);
+}
+
+function detectPreviewFamily() {
+  const keys = colorEntries.map(entry => entry.name);
+  const v09Score = scorePreviewFamily(keys, V09_PREVIEW_KEYS);
+  const v08Score = scorePreviewFamily(keys, V08_PREVIEW_KEYS);
+
+  if (v09Score === 0 && v08Score === 0) return 'custom';
+  return v09Score >= v08Score ? 'v09' : 'v08';
+}
+
+function applyPreviewVariables(root) {
+  if (!root) return;
+
+  root.style.cssText = '';
+  colorEntries.forEach(entry => {
+    const color = entry[modeKey()];
+    root.style.setProperty(`--theme-${camelToKebab(entry.name)}`, rgbaToCss(color));
+  });
+}
+
+function buildV09PreviewMarkup() {
+  return `
+    <section class="preview-showcase preview-v09">
+      <div class="preview-device">
+        <header class="preview-header">
+          <div>
+            <span class="preview-kicker">background / foreground / accent</span>
+            <h4>Paperback .9 semantic keys</h4>
+            <p>Basic placeholders for every semantic token in the current mode.</p>
+          </div>
+          <span class="preview-chip preview-chip-accent">accent</span>
+        </header>
+
+        <article class="preview-card">
+          <div class="preview-card-top">
+            <div>
+              <span class="preview-kicker">foreground / border / text</span>
+              <h4>Surface card</h4>
+              <p>Primary, secondary, and tertiary text all update live from the editor.</p>
+            </div>
+            <span class="preview-chip preview-chip-secondary">secondary</span>
+          </div>
+
+          <div class="preview-action-row">
+            <button type="button" class="preview-button preview-button-primary">primary + primaryText</button>
+            <button type="button" class="preview-button preview-button-alert">alert + alertText</button>
+          </div>
+
+          <div class="preview-list">
+            <div class="preview-list-item">
+              <div class="preview-list-copy">
+                <strong>tertiary / tertiaryText</strong>
+                <p>List item surfaces and body copy use the semantic token set.</p>
+              </div>
+              <span class="preview-list-tag">secondaryText</span>
+            </div>
+            <div class="preview-list-item">
+              <div class="preview-list-copy">
+                <strong>separator</strong>
+                <p>Rows are divided with the current separator color.</p>
+              </div>
+              <span class="preview-list-tag">textTertiary</span>
+            </div>
+          </div>
+
+          <div class="preview-overlay">
+            <strong>overlay</strong>
+            <span>Temporary scrim / overlay treatment.</span>
+          </div>
+        </article>
+      </div>
+    </section>
+  `;
+}
+
+function buildV08PreviewMarkup() {
+  return `
+    <section class="preview-showcase preview-v08">
+      <div class="preview-legacy-device">
+        <span class="preview-banner">accentColorLight + accentTextColor</span>
+
+        <article class="preview-legacy-card">
+          <div class="preview-legacy-top">
+            <div class="preview-legacy-copy">
+              <span class="preview-legacy-supertitle">supertitleTextColor</span>
+              <h4>Paperback .8 legacy keys</h4>
+              <p>Legacy button, border, and text tokens are rendered from the loaded theme.</p>
+            </div>
+            <div class="preview-button-row">
+              <button type="button" class="preview-button preview-button-normal">buttonNormal*</button>
+              <button type="button" class="preview-button preview-button-selected">buttonSelected*</button>
+            </div>
+          </div>
+
+          <div class="preview-legacy-notes">
+            <p>titleTextColor / subtitleTextColor / bodyTextColor define this text stack.</p>
+            <div class="preview-accent-rail"></div>
+            <p>accentColor and accentColorLight now have dedicated placeholder treatments.</p>
+          </div>
+        </article>
+
+        <div class="preview-overlay">
+          overlayColor with separatorColor and borderColor around the content shell.
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function buildFallbackPreviewMarkup() {
+  const keys = colorEntries.map(entry => entry.name);
+  return `
+    <section class="preview-showcase preview-fallback">
+      <h4>Custom key set</h4>
+      <p>The loaded theme does not match the bundled .8 or .9 defaults closely enough to pick a dedicated component layout yet.</p>
+      <div class="preview-key-list">
+        ${keys.map(key => `<span class="preview-key-chip">${escapeHtml(key)}</span>`).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function buildPreviewTokens() {
+  const tokenGrid = previewContent.querySelector('[data-preview-token-grid]');
+  if (!tokenGrid) return;
+
+  tokenGrid.innerHTML = '';
+
+  colorEntries.forEach(entry => {
+    const color = entry[modeKey()];
+    const token = document.createElement('article');
+    token.className = 'preview-token';
+
+    const swatch = document.createElement('div');
+    swatch.className = 'preview-token-swatch';
+    swatch.style.background = rgbaToCss(color);
+
+    const meta = document.createElement('div');
+    meta.className = 'preview-token-meta';
+
+    const name = document.createElement('strong');
+    name.textContent = entry.name;
+
+    const hex = document.createElement('code');
+    hex.textContent = rgbaToHex(color);
+
+    const alpha = document.createElement('span');
+    alpha.textContent = `alpha ${Math.round(color.alpha * 100)}%`;
+
+    meta.append(name, hex, alpha);
+    token.append(swatch, meta);
+    tokenGrid.appendChild(token);
+  });
+}
+
+function renderPreview() {
+  if (!previewTemplateLoaded || !theme) return;
+
+  const root = previewContent.querySelector('[data-preview-root]');
+  const badge = previewContent.querySelector('[data-preview-family-badge]');
+  const note = previewContent.querySelector('[data-preview-family-note]');
+  const stage = previewContent.querySelector('[data-preview-stage]');
+  const summary = previewContent.querySelector('[data-preview-token-summary]');
+  const family = detectPreviewFamily();
+
+  if (!root || !badge || !note || !stage || !summary) return;
+
+  applyPreviewVariables(root);
+
+  if (family === 'v09') {
+    badge.textContent = '.9 semantic keys';
+    note.textContent = 'Detected the Paperback .9 token set. Semantic placeholders are bound directly to the active light/dark color values.';
+    stage.innerHTML = buildV09PreviewMarkup();
+  } else if (family === 'v08') {
+    badge.textContent = '.8 legacy keys';
+    note.textContent = 'Detected the Paperback .8 token set. Legacy button and text roles are rendered as temporary building blocks from the loaded keys.';
+    stage.innerHTML = buildV08PreviewMarkup();
+  } else {
+    badge.textContent = 'Custom keys';
+    note.textContent = 'Showing a generic preview shell because the imported theme uses a non-standard key set.';
+    stage.innerHTML = buildFallbackPreviewMarkup();
+  }
+
+  summary.textContent = `${colorEntries.length} keys in ${mode} mode`;
+  buildPreviewTokens();
 }
 
 // ── Local Persistence ──────────────────────────────────
@@ -356,6 +650,7 @@ function applyColorChange(colorName, hex) {
   // Re-detect entries to keep state in sync
   colorEntries = detectColors(theme);
   saveState();
+  renderPreview();
 }
 
 function refreshEditor() {
@@ -385,6 +680,7 @@ function setMode(newMode) {
   if (colorEntries.length > 0) {
     refreshEditor();
   }
+  renderPreview();
   savePrefs();
 }
 
@@ -426,6 +722,7 @@ function resetToDefaults() {
   btnGlobalLink.title = 'All colors linked (light = dark)';
   buildEditor();
   clearSavedState();
+  renderPreview();
   savePrefs();
 }
 
@@ -448,6 +745,7 @@ function loadThemeFromJSON(json) {
   btnGlobalLink.title = 'All colors linked (light = dark)';
   buildEditor();
   saveState();
+  renderPreview();
   savePrefs();
   console.log(`Imported theme with ${colors.length} colors`);
 }
@@ -498,6 +796,8 @@ btnExport.addEventListener('click', exportTheme);
 
 async function init() {
   try {
+    await loadPreviewTemplate();
+
     // Load theme manifest and build dropdown
     themeManifest = await loadManifest();
     if (selectedDefaultId >= themeManifest.length) selectedDefaultId = 0;
@@ -517,6 +817,7 @@ async function init() {
     // Mode, preview, and link state already restored from _savedPrefs at top level
     setMode(mode);
     buildEditor();
+    renderPreview();
   } catch (err) {
     console.error('Failed to initialize editor:', err);
   }

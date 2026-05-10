@@ -53,6 +53,9 @@ const PREVIEW_DETECTION_KEYS = {
   v08: ['backgroundColor', 'foregroundColor', 'bodyTextColor', 'buttonNormalTextColor']
 };
 
+const EXPORT_DEFAULT_NAME = 'default';
+const EXPORT_EXTENSION = '.pbcolors';
+
 // ── Color Conversion ───────────────────────────────────────────────────────
 
 function floatToByte(f) {
@@ -708,15 +711,32 @@ function handleImport(file) {
   reader.readAsText(file);
 }
 
+function getExportFileName() {
+  const requestedName = prompt('Theme name:', EXPORT_DEFAULT_NAME);
+  if (requestedName === null) return null;
+
+  const baseName = requestedName
+    .trim()
+    .replace(/\.pbcolors$/i, '')
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '-')
+    .replace(/\.+$/g, '')
+    .trim();
+
+  return `${baseName || EXPORT_DEFAULT_NAME}${EXPORT_EXTENSION}`;
+}
+
 function exportTheme() {
   if (!theme) return;
+
+  const fileName = getExportFileName();
+  if (!fileName) return;
 
   const json = JSON.stringify(theme, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = 'themeColors.pbcolors';
+  anchor.download = fileName;
   anchor.click();
   URL.revokeObjectURL(url);
 }

@@ -21,9 +21,11 @@ let globalLinked = _savedPrefs?.globalLinked !== false;
 const linkedState = Object.assign({}, _savedPrefs?.linkedState);
 let selectedDefaultId = _savedPrefs?.selectedDefaultId || 0;
 let themeManifest = [];
+let activeThemeMeta = null;
 
 // ── DOM References ─────────────────────────────────────────────────────────
 const editorContent = document.getElementById('editor-content');
+const editorTitle = document.getElementById('editor-title');
 const btnLight = document.getElementById('btn-light');
 const btnDark = document.getElementById('btn-dark');
 const btnGlobalLink = document.getElementById('btn-global-link');
@@ -391,6 +393,7 @@ previewContent.addEventListener('mouseout', handleLinkedHoverEnd);
 
 const STORAGE_KEY = 'theme-editor-state';
 const PREFS_KEY = 'theme-editor-prefs';
+const THEME_META_KEY = 'theme-editor-meta';
 
 function saveState() {
   if (!theme) return;
@@ -415,8 +418,30 @@ function loadSavedState() {
   }
 }
 
+function loadSavedThemeMeta() {
+  try {
+    const saved = localStorage.getItem(THEME_META_KEY);
+    return saved ? normalizeThemeMeta(JSON.parse(saved)) : null;
+  } catch {
+    return null;
+  }
+}
+
 function clearSavedState() {
   localStorage.removeItem(STORAGE_KEY);
+}
+
+function saveThemeMeta() {
+  if (!activeThemeMeta) {
+    localStorage.removeItem(THEME_META_KEY);
+    return;
+  }
+
+  localStorage.setItem(THEME_META_KEY, JSON.stringify(activeThemeMeta));
+}
+
+function clearSavedThemeMeta() {
+  localStorage.removeItem(THEME_META_KEY);
 }
 
 // ── Theme Loading ──────────────────────────────────────────────────────────
@@ -431,6 +456,71 @@ async function loadThemeFile(filename) {
   const resp = await fetch('themes/' + filename);
   if (!resp.ok) throw new Error('Failed to load theme: ' + filename);
   return resp.json();
+}
+
+function stripPbcolorsExtension(value) {
+  return value.replace(/\.pbcolors$/i, '');
+}
+
+function normalizeThemeMeta(meta) {
+  if (!meta || typeof meta !== 'object') return null;
+
+  const name = typeof meta.name === 'string' ? meta.name.trim() : '';
+  const author = typeof meta.author === 'string' ? meta.author.trim() : '';
+  const source = typeof meta.source === 'string' ? meta.source.trim() : '';
+
+  if (!name && !author) return null;
+  return { name, author, source };
+}
+
+function getManifestThemeMeta(index) {
+  const entry = themeManifest[index];
+  if (!entry) return null;
+
+  return normalizeThemeMeta({
+    name: entry.name || entry.label || stripPbcolorsExtension(entry.file || ''),
+    author: entry.author,
+    source: 'manifest'
+  });
+}
+
+function getImportedThemeMeta(file) {
+  return normalizeThemeMeta({
+    name: stripPbcolorsExtension(file?.name || ''),
+    source: 'import'
+  });
+}
+
+function getInitialThemeMeta(saved) {
+  const defaultMeta = getManifestThemeMeta(selectedDefaultId);
+  if (!saved) return defaultMeta;
+
+  const savedMeta = loadSavedThemeMeta();
+  if (!savedMeta) return defaultMeta;
+  if (savedMeta.source === 'import' || savedMeta.author || savedMeta.name !== defaultMeta?.name) {
+    return savedMeta;
+  }
+
+  return defaultMeta;
+}
+
+function setActiveThemeMeta(meta, { persist = false } = {}) {
+  activeThemeMeta = normalizeThemeMeta(meta);
+  updateEditorTitle();
+  if (persist) saveThemeMeta();
+}
+
+function updateEditorTitle() {
+  if (!editorTitle) return;
+
+  if (!activeThemeMeta?.name) {
+    editorTitle.textContent = 'Editor';
+    return;
+  }
+
+  editorTitle.textContent = activeThemeMeta.author
+    ? `Editing "${activeThemeMeta.name}" by "${activeThemeMeta.author}"`
+    : `Editing "${activeThemeMeta.name}"`;
 }
 
 // ── Reset Dropdown ─────────────────────────────────────────────────────────
@@ -664,6 +754,7 @@ function resetToDefaults() {
   theme = JSON.parse(JSON.stringify(defaultTheme));
   colorEntries = detectColors(theme);
   globalLinked = true;
+  setActiveThemeMeta(getManifestThemeMeta(selectedDefaultId));
 
   for (const key in linkedState) delete linkedState[key];
 
@@ -672,11 +763,12 @@ function resetToDefaults() {
 
   buildEditor();
   clearSavedState();
+  clearSavedThemeMeta();
   void renderPreview();
   savePrefs();
 }
 
-function loadThemeFromJSON(json) {
+function loadThemeFromJSON(json, meta) {
   const colors = detectColors(json);
   if (colors.length === 0) {
     alert('Invalid .pbcolors file: no color entries found.');
@@ -686,6 +778,7 @@ function loadThemeFromJSON(json) {
   theme = json;
   colorEntries = colors;
   globalLinked = true;
+  setActiveThemeMeta(meta, { persist: true });
 
   for (const key in linkedState) delete linkedState[key];
 
@@ -703,7 +796,7 @@ function handleImport(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
-      loadThemeFromJSON(JSON.parse(e.target.result));
+      loadThemeFromJSON(JSON.parse(e.target.result), getImportedThemeMeta(file));
     } catch (err) {
       alert('Failed to parse file: ' + err.message);
     }
@@ -769,8 +862,11 @@ async function init() {
     defaultTheme = JSON.parse(JSON.stringify(defaultData));
 
     const saved = loadSavedState();
+    if (!saved) clearSavedThemeMeta();
+
     theme = saved || JSON.parse(JSON.stringify(defaultData));
     colorEntries = detectColors(theme);
+    setActiveThemeMeta(getInitialThemeMeta(saved));
 
     console.log(`Loaded ${colorEntries.length} colors${saved ? ' (from saved state)' : ' (defaults)'}`);
 

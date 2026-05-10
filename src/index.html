@@ -34,7 +34,7 @@
             <button id="btn-light" class="mode-btn">Light</button>
             <button id="btn-dark" class="mode-btn active">Dark</button>
           </div>
-          <button id="btn-preview-toggle" class="preview-toggle-btn" title="Show preview panel"></button>
+          <button id="btn-preview-toggle" class="preview-toggle-btn" title="Preview coming soon" disabled></button>
         </div>
       </div>
       <div id="editor-content" class="panel-body">
@@ -64,10 +64,12 @@
       }
 
       window.__themeEditorBootPrefs = prefs;
+      window.__themeEditorPreviewEnabled = false;
 
       const mode = prefs?.mode === 'light' ? 'light' : 'dark';
       const globalLinked = prefs?.globalLinked !== false;
-      const previewVisible = prefs?.previewVisible === true;
+      const previewEnabled = window.__themeEditorPreviewEnabled;
+      const previewVisible = previewEnabled && prefs?.previewVisible === true;
 
       const btnLight = document.getElementById('btn-light');
       const btnDark = document.getElementById('btn-dark');
@@ -84,7 +86,10 @@
       previewPanel.classList.toggle('collapsed', !previewVisible);
       workspace.classList.toggle('preview-hidden', !previewVisible);
       btnPreviewToggle.classList.toggle('active', previewVisible);
-      btnPreviewToggle.title = previewVisible ? 'Hide preview panel' : 'Show preview panel';
+      btnPreviewToggle.disabled = !previewEnabled;
+      btnPreviewToggle.title = previewEnabled
+        ? previewVisible ? 'Hide preview panel' : 'Show preview panel'
+        : 'Preview coming soon';
     })();
   </script>
   <script type="module" src="editor.js"></script>

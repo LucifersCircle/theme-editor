@@ -299,6 +299,15 @@ html, body {
   border-color: var(--ui-accent-hover);
 }
 
+.preview-toggle-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.preview-toggle-btn:disabled:hover {
+  border-color: var(--ui-border);
+}
+
 /* Mode Toggle */
 .mode-toggle {
   display: flex;

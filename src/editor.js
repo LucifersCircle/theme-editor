@@ -1,5 +1,7 @@
 // Paperback .pbcolors Theme Editor
 
+const PREVIEW_ENABLED = window.__themeEditorPreviewEnabled === true;
+
 // ── Early Prefs (from sync bootstrap, with local fallback) ────────────────
 const _savedPrefs = (() => {
   if (window.__themeEditorBootPrefs) return window.__themeEditorBootPrefs;
@@ -40,7 +42,7 @@ const previewPanel = document.querySelector('.preview-panel');
 const workspace = document.querySelector('.workspace');
 const previewContent = document.getElementById('preview-content');
 
-let previewVisible = _savedPrefs?.previewVisible === true;
+let previewVisible = PREVIEW_ENABLED && _savedPrefs?.previewVisible === true;
 let previewTemplateLoaded = false;
 let previewRenderNonce = 0;
 
@@ -268,6 +270,7 @@ function buildPreviewTokens() {
 }
 
 async function renderPreview() {
+  if (!PREVIEW_ENABLED) return;
   if (!previewTemplateLoaded || !theme) return;
 
   const renderNonce = ++previewRenderNonce;
@@ -730,11 +733,14 @@ function setMode(newMode) {
 }
 
 function setPreviewVisible(visible) {
-  previewVisible = visible;
+  previewVisible = PREVIEW_ENABLED && visible;
   previewPanel.classList.toggle('collapsed', !previewVisible);
   workspace.classList.toggle('preview-hidden', !previewVisible);
   btnPreviewToggle.classList.toggle('active', previewVisible);
-  btnPreviewToggle.title = previewVisible ? 'Hide preview panel' : 'Show preview panel';
+  btnPreviewToggle.disabled = !PREVIEW_ENABLED;
+  btnPreviewToggle.title = PREVIEW_ENABLED
+    ? previewVisible ? 'Hide preview panel' : 'Show preview panel'
+    : 'Preview coming soon';
   savePrefs();
 }
 
@@ -850,7 +856,7 @@ btnExport.addEventListener('click', exportTheme);
 
 async function init() {
   try {
-    await loadPreviewTemplate();
+    if (PREVIEW_ENABLED) await loadPreviewTemplate();
 
     themeManifest = await loadManifest();
     if (selectedDefaultId >= themeManifest.length) selectedDefaultId = 0;
@@ -875,7 +881,7 @@ async function init() {
     btnGlobalLink.classList.toggle('linked', globalLinked);
     btnGlobalLink.title = globalLinked ? 'All colors linked (light = dark)' : 'Colors independent';
     buildEditor();
-    await renderPreview();
+    if (PREVIEW_ENABLED) await renderPreview();
   } catch (err) {
     console.error('Failed to initialize editor:', err);
   }

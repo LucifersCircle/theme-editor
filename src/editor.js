@@ -41,8 +41,12 @@ const btnPreviewToggle = document.getElementById('btn-preview-toggle');
 const previewPanel = document.querySelector('.preview-panel');
 const workspace = document.querySelector('.workspace');
 const previewContent = document.getElementById('preview-content');
+const btnMobileColors = document.getElementById('btn-mobile-colors');
+const btnMobilePreview = document.getElementById('btn-mobile-preview');
+const mobileLayout = window.matchMedia('(max-width: 700px)');
 
 let previewVisible = PREVIEW_ENABLED && _savedPrefs?.previewVisible === true;
+let mobilePanel = previewVisible && _savedPrefs?.mobilePanel === 'preview' ? 'preview' : 'colors';
 let previewTemplateLoaded = false;
 let previewRenderNonce = 0;
 
@@ -155,7 +159,8 @@ function getPreviewTemplateFallback() {
         <div class="preview-meta">
           <span class="preview-meta-label">Live bindings</span>
           <strong>Editor changes apply instantly</strong>
-          <span>Hover to see linked colors. Click a fill or text to edit its color.</span>
+          <span class="preview-help-desktop">Hover to see linked colors. Click a fill or text to edit its color.</span>
+          <span class="preview-help-mobile">Tap a fill or text to edit its color.</span>
         </div>
       </div>
       <div class="preview-stage" data-preview-stage></div>
@@ -391,6 +396,8 @@ function editPreviewColor(host) {
   const picker = row?.querySelector('.color-picker');
   if (!picker || picker.disabled) return;
 
+  if (mobileLayout.matches) setMobilePanel('colors');
+
   const viewport = editorContent.getBoundingClientRect();
   const top = viewport.top + editorContent.clientTop;
   const bounds = row.getBoundingClientRect();
@@ -420,16 +427,68 @@ function handlePreviewEdit(event) {
   editPreviewColor(host);
 }
 
-function updateHoverHighlights(keys) {
-  const activeKeys = new Set(keys);
+function getContextualLinkedKeys(host) {
+  // The fallback lists every loaded key; that collection is not one component.
+  if (host.matches('.preview-fallback')) return [];
+  const keys = getLinkedKeys(host);
+  // Blank bindings are deliberate boundaries around artwork and native parts.
+  if (!keys.length || keys.length > 1 || host.matches('.color-row')) return keys;
 
-  document.querySelectorAll('.color-row[data-color]').forEach(row => {
-    row.classList.toggle('linked-hover', activeKeys.has(row.dataset.color));
+  const scene = host.closest('.preview-showcase, .preview-v09-scene, .preview-token-section');
+  let ancestor = host.parentElement?.closest('[data-linked-keys]');
+  while (ancestor && previewContent.contains(ancestor)) {
+    if (ancestor === scene || (scene && !scene.contains(ancestor))) break;
+    const ancestorKeys = getLinkedKeys(ancestor);
+    if (!ancestorKeys.length) break;
+    if (ancestorKeys.length > 1) {
+      // Include one component's layered bindings, never every key in a scene.
+      return [...new Set([...ancestorKeys, ...keys])];
+    }
+    ancestor = ancestor.parentElement?.closest('[data-linked-keys]');
+  }
+  return keys;
+}
+
+function updateHoverHighlights(keys) {
+  const palette = [
+    ['#ff7898', 'rgba(255, 120, 152, 0.16)'],
+    ['#55d9ed', 'rgba(85, 217, 237, 0.16)'],
+    ['#ffc766', 'rgba(255, 199, 102, 0.16)'],
+    ['#bca0ff', 'rgba(188, 160, 255, 0.16)'],
+    ['#77e4b1', 'rgba(119, 228, 177, 0.16)']
+  ];
+  const colors = new Map([...new Set(keys)].map((key, index) => [key, palette[index % palette.length]]));
+  const highlight = (element, key) => {
+    const color = colors.get(key);
+    element.classList.toggle('linked-hover', Boolean(color));
+    if (color) {
+      element.style.setProperty('--linked-highlight', color[0]);
+      element.style.setProperty('--linked-highlight-soft', color[1]);
+    } else {
+      element.style.removeProperty('--linked-highlight');
+      element.style.removeProperty('--linked-highlight-soft');
+    }
+  };
+
+  editorContent.querySelectorAll('.color-row[data-color]').forEach(row => {
+    highlight(row, row.dataset.color);
   });
 
   previewContent.querySelectorAll('[data-linked-keys]').forEach(block => {
-    const matches = getLinkedKeys(block).some(key => activeKeys.has(key));
-    block.classList.toggle('linked-hover', matches);
+    if (block.matches('.preview-fallback')) {
+      highlight(block, null);
+      return;
+    }
+    const bindings = getLinkedKeys(block);
+    let owner = colors.has(bindings[0]) ? bindings[0] : null;
+    if (!owner) {
+      // A child with its own binding draws its own outline. Its text color must
+      // not also paint the surrounding button's fill outline.
+      const childBindings = new Set(Array.from(block.querySelectorAll('[data-linked-keys]'))
+        .map(child => getLinkedKeys(child)[0]));
+      owner = bindings.find(key => colors.has(key) && !childBindings.has(key));
+    }
+    highlight(block, owner);
   });
 }
 
@@ -444,7 +503,7 @@ function handleLinkedHoverStart(event) {
   const related = normalizeHoverNode(event.relatedTarget);
   if (related && host.contains(related)) return;
 
-  updateHoverHighlights(getLinkedKeys(host));
+  updateHoverHighlights(getContextualLinkedKeys(host));
 }
 
 function handleLinkedHoverEnd(event) {
@@ -456,7 +515,7 @@ function handleLinkedHoverEnd(event) {
 
   const nextHost = getLinkedHoverHost(related);
   if (nextHost) {
-    updateHoverHighlights(getLinkedKeys(nextHost));
+    updateHoverHighlights(getContextualLinkedKeys(nextHost));
     return;
   }
 
@@ -465,8 +524,12 @@ function handleLinkedHoverEnd(event) {
 
 editorContent.addEventListener('mouseover', handleLinkedHoverStart);
 editorContent.addEventListener('mouseout', handleLinkedHoverEnd);
+editorContent.addEventListener('focusin', handleLinkedHoverStart);
+editorContent.addEventListener('focusout', handleLinkedHoverEnd);
 previewContent.addEventListener('mouseover', handleLinkedHoverStart);
 previewContent.addEventListener('mouseout', handleLinkedHoverEnd);
+previewContent.addEventListener('focusin', handleLinkedHoverStart);
+previewContent.addEventListener('focusout', handleLinkedHoverEnd);
 previewContent.addEventListener('click', handlePreviewEdit);
 previewContent.addEventListener('keydown', event => {
   if (event.repeat || (event.key !== 'Enter' && event.key !== ' ')) return;
@@ -488,7 +551,7 @@ function saveState() {
 
 function savePrefs() {
   localStorage.setItem(PREFS_KEY, JSON.stringify({
-    previewVisible, mode, globalLinked, linkedState, selectedDefaultId
+    previewVisible, mobilePanel, mode, globalLinked, linkedState, selectedDefaultId
   }));
 }
 
@@ -632,6 +695,7 @@ async function selectDefault(index) {
   selectedDefaultId = index;
   updateResetLabel();
   resetDropdown.classList.add('hidden');
+  btnResetToggle.setAttribute('aria-expanded', 'false');
 
   resetDropdown.querySelectorAll('.split-dropdown-item').forEach((el, i) => {
     el.classList.toggle('active', i === index);
@@ -650,10 +714,19 @@ async function selectDefault(index) {
 btnResetToggle.addEventListener('click', (e) => {
   e.stopPropagation();
   resetDropdown.classList.toggle('hidden');
+  btnResetToggle.setAttribute('aria-expanded', String(!resetDropdown.classList.contains('hidden')));
 });
 
 document.addEventListener('click', () => {
   resetDropdown.classList.add('hidden');
+  btnResetToggle.setAttribute('aria-expanded', 'false');
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !resetDropdown.classList.contains('hidden')) {
+    resetDropdown.classList.add('hidden');
+    btnResetToggle.setAttribute('aria-expanded', 'false');
+    btnResetToggle.focus();
+  }
 });
 
 // ── Mode + Link State ──────────────────────────────────────────────────────
@@ -682,6 +755,8 @@ function setGlobalLinked(linked) {
   for (const key in linkedState) delete linkedState[key];
   btnGlobalLink.classList.toggle('linked', globalLinked);
   btnGlobalLink.title = globalLinked ? 'All colors linked (light = dark)' : 'Colors independent';
+  btnGlobalLink.setAttribute('aria-pressed', String(globalLinked));
+  btnGlobalLink.querySelector('.control-label').textContent = globalLinked ? 'Modes linked' : 'Modes separate';
   colorEntries.forEach(entry => updateLinkButton(entry.name));
   savePrefs();
 }
@@ -694,6 +769,9 @@ function updateLinkButton(colorName) {
   const otherMode = mode === 'dark' ? 'light' : 'dark';
   btn.classList.toggle('linked', linked);
   btn.title = linked ? `Linked to ${otherMode}` : `Not linked to ${otherMode}`;
+  btn.setAttribute('aria-pressed', String(linked));
+  btn.setAttribute('aria-label', `${colorName}: link Light and Dark`);
+  btn.querySelector('.control-label').textContent = linked ? 'Linked' : 'Separate';
 }
 
 // ── Editor UI ──────────────────────────────────────────────────────────────
@@ -726,6 +804,9 @@ function buildEditor() {
     hexInput.value = hex;
     hexInput.dataset.color = entry.name;
     hexInput.spellcheck = false;
+    hexInput.setAttribute('aria-label', `${entry.name} hex color`);
+    hexInput.autocapitalize = 'off';
+    hexInput.autocomplete = 'off';
 
     const alphaLabel = document.createElement('span');
     alphaLabel.className = 'color-alpha';
@@ -740,6 +821,12 @@ function buildEditor() {
     linkBtn.classList.toggle('linked', isLinked(entry.name));
     const otherMode = mode === 'dark' ? 'light' : 'dark';
     linkBtn.title = isLinked(entry.name) ? `Linked to ${otherMode}` : `Not linked to ${otherMode}`;
+    linkBtn.setAttribute('aria-label', `${entry.name}: link Light and Dark`);
+    linkBtn.setAttribute('aria-pressed', String(isLinked(entry.name)));
+    const linkLabel = document.createElement('span');
+    linkLabel.className = 'control-label';
+    linkLabel.textContent = isLinked(entry.name) ? 'Linked' : 'Separate';
+    linkBtn.appendChild(linkLabel);
 
     picker.addEventListener('input', (e) => {
       const newHex = e.target.value;
@@ -807,6 +894,8 @@ function setMode(newMode) {
   mode = newMode;
   btnLight.classList.toggle('active', mode === 'light');
   btnDark.classList.toggle('active', mode === 'dark');
+  btnLight.setAttribute('aria-pressed', String(mode === 'light'));
+  btnDark.setAttribute('aria-pressed', String(mode === 'dark'));
 
   if (colorEntries.length > 0) {
     refreshEditor();
@@ -818,6 +907,7 @@ function setMode(newMode) {
 
 function setPreviewVisible(visible) {
   previewVisible = PREVIEW_ENABLED && visible;
+  if (!previewVisible) mobilePanel = 'colors';
   previewPanel.classList.toggle('collapsed', !previewVisible);
   workspace.classList.toggle('preview-hidden', !previewVisible);
   btnPreviewToggle.classList.toggle('active', previewVisible);
@@ -827,8 +917,30 @@ function setPreviewVisible(visible) {
     : 'Preview coming soon';
   btnPreviewToggle.setAttribute('aria-label', btnPreviewToggle.title);
   btnPreviewToggle.setAttribute('aria-expanded', String(previewVisible));
+  btnPreviewToggle.querySelector('.control-label').textContent = previewVisible ? 'Hide preview' : 'Show preview';
+  syncMobilePanel();
   savePrefs();
 }
+
+function syncMobilePanel() {
+  workspace.dataset.mobilePanel = mobilePanel;
+  btnMobileColors.setAttribute('aria-pressed', String(mobilePanel === 'colors'));
+  btnMobilePreview.setAttribute('aria-pressed', String(mobilePanel === 'preview'));
+  btnMobilePreview.disabled = !PREVIEW_ENABLED;
+}
+
+function setMobilePanel(panel) {
+  mobilePanel = panel === 'preview' && PREVIEW_ENABLED ? 'preview' : 'colors';
+  if (mobilePanel === 'preview') {
+    setPreviewVisible(true);
+  } else {
+    syncMobilePanel();
+    savePrefs();
+  }
+}
+
+btnMobileColors.addEventListener('click', () => setMobilePanel('colors'));
+btnMobilePreview.addEventListener('click', () => setMobilePanel('preview'));
 
 btnLight.addEventListener('click', () => setMode('light'));
 btnDark.addEventListener('click', () => setMode('dark'));

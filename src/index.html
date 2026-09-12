@@ -13,28 +13,33 @@
     <div class="toolbar-actions">
       <div class="split-btn" id="reset-group">
         <button id="btn-reset" class="btn split-btn-main">Reset to: .9 default</button>
-        <button id="btn-reset-toggle" class="btn split-btn-toggle">&#9662;</button>
+        <button id="btn-reset-toggle" class="btn split-btn-toggle" aria-label="Choose reset theme" aria-expanded="false" aria-controls="reset-dropdown">&#9662;</button>
         <div id="reset-dropdown" class="split-dropdown hidden">
           <!-- populated by JS from manifest -->
         </div>
       </div>
-      <button id="btn-import" class="btn">Import .pbcolors</button>
-      <button id="btn-export" class="btn">Export .pbcolors</button>
+      <button id="btn-import" class="btn" title="Import .pbcolors">Import</button>
+      <button id="btn-export" class="btn" title="Export .pbcolors">Export</button>
       <input type="file" id="file-input" accept=".pbcolors" hidden>
     </div>
   </header>
 
-  <main class="workspace preview-hidden">
+  <nav class="mobile-view-switch" aria-label="Workspace view">
+    <button id="btn-mobile-colors" type="button" aria-pressed="true" aria-controls="editor-content">Colors</button>
+    <button id="btn-mobile-preview" type="button" aria-pressed="false" aria-controls="preview-panel">Preview</button>
+  </nav>
+
+  <main class="workspace preview-hidden" data-mobile-panel="colors">
     <section class="panel editor-panel">
       <div class="panel-header">
         <h2 id="editor-title">Editor</h2>
         <div class="editor-controls">
-          <button id="btn-global-link" class="global-link-btn linked" title="All colors linked (light = dark)"></button>
+          <button id="btn-global-link" class="global-link-btn linked" title="All colors linked (light = dark)" aria-label="Link all colors between Light and Dark" aria-pressed="true"><span class="control-label">Modes linked</span></button>
           <div class="mode-toggle">
-            <button id="btn-light" class="mode-btn">Light</button>
-            <button id="btn-dark" class="mode-btn active">Dark</button>
+            <button id="btn-light" class="mode-btn" aria-pressed="false">Light</button>
+            <button id="btn-dark" class="mode-btn active" aria-pressed="true">Dark</button>
           </div>
-          <button id="btn-preview-toggle" class="preview-toggle-btn" title="Show preview panel" aria-label="Show preview panel" aria-expanded="false" aria-controls="preview-panel"></button>
+          <button id="btn-preview-toggle" class="preview-toggle-btn" title="Show preview panel" aria-label="Show preview panel" aria-expanded="false" aria-controls="preview-panel"><span class="control-label">Show preview</span></button>
         </div>
       </div>
       <div id="editor-content" class="panel-body">
@@ -45,6 +50,7 @@
     <section id="preview-panel" class="panel preview-panel collapsed">
       <div class="panel-header">
         <h2>Preview</h2>
+        <span class="preview-mobile-hint">Tap a color to edit</span>
       </div>
       <div id="preview-content" class="panel-body">
         <!-- Preview components will be loaded here -->
@@ -70,6 +76,7 @@
       const globalLinked = prefs?.globalLinked !== false;
       const previewEnabled = window.__themeEditorPreviewEnabled;
       const previewVisible = previewEnabled && prefs?.previewVisible === true;
+      const mobilePanel = previewVisible && prefs?.mobilePanel === 'preview' ? 'preview' : 'colors';
 
       const btnLight = document.getElementById('btn-light');
       const btnDark = document.getElementById('btn-dark');
@@ -77,11 +84,17 @@
       const btnPreviewToggle = document.getElementById('btn-preview-toggle');
       const previewPanel = document.querySelector('.preview-panel');
       const workspace = document.querySelector('.workspace');
+      const btnMobileColors = document.getElementById('btn-mobile-colors');
+      const btnMobilePreview = document.getElementById('btn-mobile-preview');
 
       btnLight.classList.toggle('active', mode === 'light');
       btnDark.classList.toggle('active', mode === 'dark');
+      btnLight.setAttribute('aria-pressed', String(mode === 'light'));
+      btnDark.setAttribute('aria-pressed', String(mode === 'dark'));
       btnGlobalLink.classList.toggle('linked', globalLinked);
       btnGlobalLink.title = globalLinked ? 'All colors linked (light = dark)' : 'Colors independent';
+      btnGlobalLink.setAttribute('aria-pressed', String(globalLinked));
+      btnGlobalLink.querySelector('.control-label').textContent = globalLinked ? 'Modes linked' : 'Modes separate';
 
       previewPanel.classList.toggle('collapsed', !previewVisible);
       workspace.classList.toggle('preview-hidden', !previewVisible);
@@ -92,6 +105,11 @@
         : 'Preview coming soon';
       btnPreviewToggle.setAttribute('aria-label', btnPreviewToggle.title);
       btnPreviewToggle.setAttribute('aria-expanded', String(previewVisible));
+      btnPreviewToggle.querySelector('.control-label').textContent = previewVisible ? 'Hide preview' : 'Show preview';
+      workspace.dataset.mobilePanel = mobilePanel;
+      btnMobileColors.setAttribute('aria-pressed', String(mobilePanel === 'colors'));
+      btnMobilePreview.setAttribute('aria-pressed', String(mobilePanel === 'preview'));
+      btnMobilePreview.disabled = !previewEnabled;
     })();
   </script>
   <script type="module" src="editor.js"></script>

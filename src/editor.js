@@ -57,8 +57,7 @@ const PREVIEW_DETECTION_KEYS = {
   v08: ['backgroundColor', 'foregroundColor', 'bodyTextColor', 'buttonNormalTextColor']
 };
 
-const EXPORT_DEFAULT_NAME = 'default';
-const EXPORT_EXTENSION = '.pbcolors';
+const EXPORT_FILE_NAME = 'themeColors.pbcolors';
 
 // ── Color Conversion ───────────────────────────────────────────────────────
 
@@ -156,7 +155,7 @@ function getPreviewTemplateFallback() {
         <div class="preview-meta">
           <span class="preview-meta-label">Live bindings</span>
           <strong>Editor changes apply instantly</strong>
-          <span>Imported themes swap the component set automatically.</span>
+          <span>Hover a sample or color row to explore its bindings.</span>
         </div>
       </div>
       <div class="preview-stage" data-preview-stage></div>
@@ -218,6 +217,7 @@ function applyPreviewVariables(root) {
   root.style.cssText = '';
   colorEntries.forEach(entry => {
     const color = entry[modeKey()];
+    if (!color || !['red', 'green', 'blue', 'alpha'].every(channel => Number.isFinite(color[channel]))) return;
     root.style.setProperty(`--theme-${camelToKebab(entry.name)}`, rgbaToCss(color));
   });
 }
@@ -235,7 +235,7 @@ function buildFallbackPreviewMarkup() {
   `;
 }
 
-function buildPreviewTokens() {
+function buildPreviewTokens(coverage = {}) {
   const tokenGrid = previewContent.querySelector('[data-preview-token-grid]');
   if (!tokenGrid) return;
 
@@ -246,6 +246,8 @@ function buildPreviewTokens() {
     const token = document.createElement('article');
     token.className = 'preview-token';
     token.dataset.linkedKeys = entry.name;
+    const mapping = coverage[entry.name];
+    token.dataset.coverageStatus = mapping?.status || 'unmapped';
 
     const swatch = document.createElement('div');
     swatch.className = 'preview-token-swatch';
@@ -263,7 +265,17 @@ function buildPreviewTokens() {
     const alpha = document.createElement('span');
     alpha.textContent = `alpha ${Math.round(color.alpha * 100)}%`;
 
-    meta.append(name, hex, alpha);
+    const status = document.createElement('span');
+    status.className = 'preview-token-status';
+    status.textContent = mapping?.status === 'confirmed'
+      ? 'Observed in app'
+      : mapping?.status === 'unresolved' ? 'App use unresolved' : 'Raw color';
+
+    const note = document.createElement('span');
+    note.className = 'preview-token-note';
+    note.textContent = mapping?.note || 'No observed app role recorded for this key.';
+
+    meta.append(name, hex, alpha, status, note);
     token.append(swatch, meta);
     tokenGrid.appendChild(token);
   });
@@ -289,6 +301,7 @@ async function renderPreview() {
   let description = 'Showing a generic preview shell because the imported theme uses a non-standard key set.';
   let stageHtml = buildFallbackPreviewMarkup();
   let summaryText = `${colorEntries.length} keys in ${mode} mode`;
+  let coverage = {};
 
   if (familyId !== 'custom') {
     try {
@@ -308,6 +321,7 @@ async function renderPreview() {
       description = family.description;
       stageHtml = result.stageHtml;
       summaryText = result.summaryText;
+      coverage = family.coverage || {};
     } catch (err) {
       console.error(`Failed to load preview family "${familyId}":`, err);
     }
@@ -319,7 +333,7 @@ async function renderPreview() {
   note.textContent = description;
   stage.innerHTML = stageHtml;
   summary.textContent = summaryText;
-  buildPreviewTokens();
+  buildPreviewTokens(coverage);
 }
 
 // ── Hover Linking ──────────────────────────────────────────────────────────
@@ -741,6 +755,8 @@ function setPreviewVisible(visible) {
   btnPreviewToggle.title = PREVIEW_ENABLED
     ? previewVisible ? 'Hide preview panel' : 'Show preview panel'
     : 'Preview coming soon';
+  btnPreviewToggle.setAttribute('aria-label', btnPreviewToggle.title);
+  btnPreviewToggle.setAttribute('aria-expanded', String(previewVisible));
   savePrefs();
 }
 
@@ -810,32 +826,15 @@ function handleImport(file) {
   reader.readAsText(file);
 }
 
-function getExportFileName() {
-  const requestedName = prompt('Theme name:', EXPORT_DEFAULT_NAME);
-  if (requestedName === null) return null;
-
-  const baseName = requestedName
-    .trim()
-    .replace(/\.pbcolors$/i, '')
-    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '-')
-    .replace(/\.+$/g, '')
-    .trim();
-
-  return `${baseName || EXPORT_DEFAULT_NAME}${EXPORT_EXTENSION}`;
-}
-
 function exportTheme() {
   if (!theme) return;
-
-  const fileName = getExportFileName();
-  if (!fileName) return;
 
   const json = JSON.stringify(theme, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = fileName;
+  anchor.download = EXPORT_FILE_NAME;
   anchor.click();
   URL.revokeObjectURL(url);
 }

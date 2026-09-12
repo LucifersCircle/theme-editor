@@ -34,7 +34,7 @@
             <button id="btn-light" class="mode-btn">Light</button>
             <button id="btn-dark" class="mode-btn active">Dark</button>
           </div>
-          <button id="btn-preview-toggle" class="preview-toggle-btn" title="Preview coming soon" disabled></button>
+          <button id="btn-preview-toggle" class="preview-toggle-btn" title="Show preview panel" aria-label="Show preview panel" aria-expanded="false" aria-controls="preview-panel"></button>
         </div>
       </div>
       <div id="editor-content" class="panel-body">
@@ -42,7 +42,7 @@
       </div>
     </section>
 
-    <section class="panel preview-panel collapsed">
+    <section id="preview-panel" class="panel preview-panel collapsed">
       <div class="panel-header">
         <h2>Preview</h2>
       </div>
@@ -64,7 +64,7 @@
       }
 
       window.__themeEditorBootPrefs = prefs;
-      window.__themeEditorPreviewEnabled = false;
+      window.__themeEditorPreviewEnabled = true;
 
       const mode = prefs?.mode === 'light' ? 'light' : 'dark';
       const globalLinked = prefs?.globalLinked !== false;
@@ -90,6 +90,8 @@
       btnPreviewToggle.title = previewEnabled
         ? previewVisible ? 'Hide preview panel' : 'Show preview panel'
         : 'Preview coming soon';
+      btnPreviewToggle.setAttribute('aria-label', btnPreviewToggle.title);
+      btnPreviewToggle.setAttribute('aria-expanded', String(previewVisible));
     })();
   </script>
   <script type="module" src="editor.js"></script>

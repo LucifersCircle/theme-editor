@@ -20,8 +20,8 @@ export default {
     'supertitleTextColor',
     'titleTextColor'
   ],
-  title: '.8 legacy keys',
-  description: 'Detected the Paperback .8 token set. Legacy button and text roles are rendered as temporary building blocks from the loaded keys.',
+  title: 'Paperback 0.8',
+  description: 'Button, text and surface samples using Paperback 0.8 color keys. App locations have not been mapped yet.',
   render(context) {
     const { colorEntries, mode, keyAttr } = context;
 
@@ -30,30 +30,30 @@ export default {
       stageHtml: `
         <section class="preview-showcase preview-v08"${keyAttr(['backgroundColor'])}>
           <div class="preview-legacy-device">
-            <span class="preview-banner"${keyAttr(['accentColorLight', 'accentTextColor'])}>accentColorLight + accentTextColor</span>
+            <span class="preview-banner"${keyAttr(['accentColorLight', 'accentTextColor'])}>Accent label</span>
 
             <article class="preview-legacy-card"${keyAttr(['foregroundColor', 'borderColor'])}>
               <div class="preview-legacy-top">
                 <div class="preview-legacy-copy">
-                  <span class="preview-legacy-supertitle"${keyAttr(['supertitleTextColor'])}>supertitleTextColor</span>
-                  <h4${keyAttr(['titleTextColor'])}>Paperback .8 legacy keys</h4>
-                  <p class="preview-legacy-subtitle"${keyAttr(['subtitleTextColor'])}>Legacy button, border, and text tokens are rendered from the loaded theme.</p>
+                  <span class="preview-legacy-supertitle"${keyAttr(['supertitleTextColor'])}>Supertitle</span>
+                  <h4${keyAttr(['titleTextColor'])}>Theme preview</h4>
+                  <p class="preview-legacy-subtitle"${keyAttr(['subtitleTextColor'])}>Titles, descriptions and button states.</p>
                 </div>
                 <div class="preview-button-row">
-                  <button type="button" class="preview-button preview-button-normal"${keyAttr(['buttonNormalBackgroundColor', 'buttonNormalBorderColor', 'buttonNormalTextColor'])}>buttonNormal*</button>
-                  <button type="button" class="preview-button preview-button-selected"${keyAttr(['buttonSelectedBackgroundColor', 'buttonSelectedBorderColor', 'buttonSelectedTextColor'])}>buttonSelected*</button>
+                  <button type="button" class="preview-button preview-button-normal"${keyAttr(['buttonNormalBackgroundColor', 'buttonNormalBorderColor', 'buttonNormalTextColor'])}>Normal</button>
+                  <button type="button" class="preview-button preview-button-selected"${keyAttr(['buttonSelectedBackgroundColor', 'buttonSelectedBorderColor', 'buttonSelectedTextColor'])}>Selected</button>
                 </div>
               </div>
 
               <div class="preview-legacy-notes"${keyAttr(['separatorColor'])}>
-                <p class="preview-legacy-body"${keyAttr(['bodyTextColor'])}>titleTextColor / subtitleTextColor / bodyTextColor define this text stack.</p>
+                <p class="preview-legacy-body"${keyAttr(['bodyTextColor'])}>Body text with a section divider.</p>
                 <div class="preview-accent-rail"${keyAttr(['accentColor', 'accentColorLight'])}></div>
-                <p class="preview-legacy-subtitle"${keyAttr(['subtitleTextColor'])}>accentColor and accentColorLight now have dedicated placeholder treatments.</p>
+                <p class="preview-legacy-subtitle"${keyAttr(['subtitleTextColor'])}>Accent colors</p>
               </div>
             </article>
 
             <div class="preview-overlay"${keyAttr(['overlayColor'])}>
-              <span${keyAttr(['accentTextColor'])}>overlayColor with separatorColor and borderColor around the content shell.</span>
+              <span${keyAttr(['accentTextColor'])}>Overlay sample</span>
             </div>
           </div>
         </section>

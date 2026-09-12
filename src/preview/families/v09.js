@@ -1,25 +1,25 @@
 // Roles are scoped to observed Paperback 0.9-r187 elements. See the evidence ledger.
 const coverage = {
-  accent: { status: 'confirmed', note: 'Discover/source chevrons, details authors, NEW badge fill, chapter progress and Complete labels, and reader settings track.', evidence: ['E01', 'E02', 'E04', 'E05', 'E06', 'E07', 'E11'] },
-  alert: { status: 'unresolved', note: 'No reliable app placement observed. No alert or destructive-action pairing is assumed.', evidence: [] },
-  alertText: { status: 'confirmed', note: 'NEW badge text, confirmed by an alertText-only A/B probe; its fill is accent.', evidence: ['E05', 'E10'] },
-  background: { status: 'confirmed', note: 'Discover/search canvas, Filters and reader settings backgrounds, and reader gutter.', evidence: ['E01', 'E02', 'E03', 'E06', 'E09'] },
-  border: { status: 'confirmed', note: 'Outlines of floating reader controls. Their material fills are separately unresolved.', evidence: ['E06'] },
-  error: { status: 'confirmed', note: 'Excluded filter-tag fill. The app adds translucency; the preview uses approximate 50% fill opacity.', evidence: ['E08'] },
-  foreground: { status: 'confirmed', note: 'Quick Search source row, neutral filter chips/groups, details description, reader settings groups, sidebar selection, and selected chapter-row fill.', evidence: ['E02', 'E03', 'E04', 'E06', 'E12'] },
-  overlay: { status: 'unresolved', note: 'No reliable app placement observed. The alpha study demonstrates raw compositing only.', evidence: ['E09'] },
-  primary: { status: 'confirmed', note: 'Details Continue button fill, paired with primaryText.', evidence: ['E04'] },
-  primaryText: { status: 'confirmed', note: 'Details Continue button text, paired with primary.', evidence: ['E04'] },
-  secondary: { status: 'confirmed', note: 'Details Bookshelf and Track action fills. Theme alpha is preserved over an illustrative backdrop.', evidence: ['E04'] },
-  secondaryText: { status: 'confirmed', note: 'Details Bookshelf and Track action foregrounds; distinct from textSecondary.', evidence: ['E04'] },
-  separator: { status: 'confirmed', note: 'Details description and chapter-section boundaries, not every chapter-row divider.', evidence: ['E04', 'E05'] },
-  success: { status: 'confirmed', note: 'Included filter-tag fill. The app adds translucency; the preview uses approximate 50% fill opacity.', evidence: ['E07'] },
-  tertiary: { status: 'unresolved', note: 'No reliable app placement observed. No third surface is assumed.', evidence: [] },
-  tertiaryText: { status: 'unresolved', note: 'No reliable app placement observed. This is distinct from textTertiary.', evidence: [] },
-  text: { status: 'confirmed', note: 'Observed titles, filter labels, details description, chapter titles, and reader/settings labels.', evidence: ['E01', 'E02', 'E03', 'E04', 'E05', 'E06'] },
-  textSecondary: { status: 'confirmed', note: 'Manga types, source version, filter counts, details tags, chapter group/date, and reader subtitle/help.', evidence: ['E01', 'E02', 'E03', 'E04', 'E05', 'E06'] },
-  textTertiary: { status: 'confirmed', note: 'Chapter-row language text and the observed Home empty-state icon; no general tertiary-text role assumed.', evidence: ['E05', 'E13'] },
-  warning: { status: 'unresolved', note: 'No reliable app placement observed. No warning component is assumed.', evidence: [] }
+  accent: { status: 'confirmed', note: 'Discover and Extension chevrons; Details authors; NEW badge fill; chapter progress and Complete labels; Reader settings slider track.', evidence: ['E01', 'E02', 'E04', 'E05', 'E06', 'E07', 'E11'] },
+  alert: { status: 'unresolved', note: 'App location not yet identified.', evidence: [] },
+  alertText: { status: 'confirmed', note: 'NEW badge text in the chapter list.', evidence: ['E05', 'E10'] },
+  background: { status: 'confirmed', note: 'Discover/Search, Filters and Reader settings backgrounds; reader page margins.', evidence: ['E01', 'E02', 'E03', 'E06', 'E09'] },
+  border: { status: 'confirmed', note: 'Outlines of floating reader controls.', evidence: ['E06'] },
+  error: { status: 'confirmed', note: 'Excluded tag fills in Filters.', evidence: ['E08'] },
+  foreground: { status: 'confirmed', note: 'Quick Search Extension row; neutral filter tags and groups; Details description; Reader settings groups; sidebar and chapter selections.', evidence: ['E02', 'E03', 'E04', 'E06', 'E12'] },
+  overlay: { status: 'unresolved', note: 'App location unknown; shown in the overlay comparison.', evidence: ['E09'] },
+  primary: { status: 'confirmed', note: 'Continue button fill on the Details screen.', evidence: ['E04'] },
+  primaryText: { status: 'confirmed', note: 'Continue button text on the Details screen.', evidence: ['E04'] },
+  secondary: { status: 'confirmed', note: 'Bookshelf and Track button fills on the Details screen.', evidence: ['E04'] },
+  secondaryText: { status: 'confirmed', note: 'Bookshelf and Track button labels on the Details screen.', evidence: ['E04'] },
+  separator: { status: 'confirmed', note: 'Section dividers around the Details description and chapter list.', evidence: ['E04', 'E05'] },
+  success: { status: 'confirmed', note: 'Included tag fills in Filters.', evidence: ['E07'] },
+  tertiary: { status: 'unresolved', note: 'App location not yet identified.', evidence: [] },
+  tertiaryText: { status: 'unresolved', note: 'App location not yet identified.', evidence: [] },
+  text: { status: 'confirmed', note: 'Discover and chapter titles; filter labels; Details description; Reader and settings labels.', evidence: ['E01', 'E02', 'E03', 'E04', 'E05', 'E06'] },
+  textSecondary: { status: 'confirmed', note: 'Discover content types; Extension version; filter counts; Details tags; chapter group and date; Reader subtitle and help.', evidence: ['E01', 'E02', 'E03', 'E04', 'E05', 'E06'] },
+  textTertiary: { status: 'confirmed', note: 'Chapter language labels and the Home empty-state icon.', evidence: ['E05', 'E13'] },
+  warning: { status: 'unresolved', note: 'App location not yet identified.', evidence: [] }
 };
 
 export default {
@@ -27,7 +27,7 @@ export default {
   keys: Object.keys(coverage),
   coverage,
   title: 'Paperback 0.9',
-  description: 'Observed color roles in a compact component sandbox. Native materials and app-added opacity are labeled where their exact rendering remains unresolved.',
+  description: 'Color mappings from Discover, Search, Filters, title details and the reader.',
   render(context) {
     const { colorEntries, mode, keyAttr } = context;
     const modeKey = mode === 'dark' ? 'darkColor' : 'lightColor';
@@ -55,7 +55,7 @@ export default {
     };
 
     const discovery = scene('discovery', 'Discover / Search',
-      'Continuous canvas, content titles, and a Quick Search source row. Artwork is illustrative.',
+      'Background, titles and content types from Discover/Search, plus the Extension row from Quick Search.',
       ['background', 'foreground', 'text', 'textSecondary', 'accent'], `
         <div class="preview-v09-sample preview-v09-canvas"${keyAttr(['background'])}>
           <div class="preview-v09-row">
@@ -64,12 +64,12 @@ export default {
           </div>
           <div class="preview-v09-results">
             <div class="preview-v09-result">
-              <div class="preview-v09-artwork" data-linked-keys="" aria-label="Illustrative cover artwork"><span>01</span></div>
+              <div class="preview-v09-artwork" data-linked-keys="" aria-label="Sample cover artwork"><span>01</span></div>
               <strong class="preview-v09-text"${keyAttr(['text'])}>The Paper Garden</strong>
               <span class="preview-v09-subtext"${keyAttr(['textSecondary'])}>Manga</span>
             </div>
             <div class="preview-v09-result">
-              <div class="preview-v09-artwork preview-v09-artwork-alt" data-linked-keys="" aria-label="Illustrative cover artwork"><span>02</span></div>
+              <div class="preview-v09-artwork preview-v09-artwork-alt" data-linked-keys="" aria-label="Sample cover artwork"><span>02</span></div>
               <strong class="preview-v09-text"${keyAttr(['text'])}>Across the Bay</strong>
               <span class="preview-v09-subtext"${keyAttr(['textSecondary'])}>Manhwa</span>
             </div>
@@ -84,7 +84,7 @@ export default {
         </div>`);
 
     const filters = scene('filters', 'Filters',
-      'Neutral, included, and excluded tags. Included/excluded fills use approximate 50% app opacity × theme alpha over background; labels keep their own alpha.',
+      'Tag groups, counts, and neutral, included and excluded tags from the Filters screen.',
       ['background', 'foreground', 'text', 'textSecondary', 'success', 'error'], `
         <div class="preview-v09-sample preview-v09-canvas"${keyAttr(['background'])}>
           <div class="preview-v09-group preview-v09-row"${keyAttr(['foreground'])}>
@@ -108,11 +108,11 @@ export default {
         </div>`);
 
     const details = scene('details', 'Details',
-      'Artwork / material is illustrative. The foreground tint and native backdrop are approximated; exact app blend unmeasured. Tint opacity is 50% × theme alpha; text alpha is unchanged.',
+      'Title, author, status tags, action buttons and description from the Details screen.',
       ['text', 'accent', 'primary', 'primaryText', 'secondary', 'secondaryText', 'foreground', 'textSecondary', 'separator'], `
         <div class="preview-v09-sample preview-v09-illustrative-material">
           <div class="preview-v09-details-heading">
-            <div class="preview-v09-artwork preview-v09-small-cover" data-linked-keys="" aria-label="Illustrative cover artwork"><span>01</span></div>
+            <div class="preview-v09-artwork preview-v09-small-cover" data-linked-keys="" aria-label="Sample cover artwork"><span>01</span></div>
             <div class="preview-v09-copy">
               <strong class="preview-v09-text preview-v09-title"${keyAttr(['text'])}>The Paper Garden</strong>
               <span class="preview-v09-accent"${keyAttr(['accent'])}>A. Mori · Author</span>
@@ -138,7 +138,7 @@ export default {
         </div>`);
 
     const chapters = scene('chapters', 'Chapters',
-      'NEW, in progress, completed, and selected. Completed content, including its accent Complete label, uses approximate 50% app opacity. Selected foreground tint uses approximate 50% × theme alpha with unchanged text alpha; its exact app blend is unmeasured. Backdrop material is illustrative.',
+      'New, in-progress, completed and selected rows from the Details chapter list, with language, group and date labels.',
       ['text', 'textSecondary', 'textTertiary', 'accent', 'alertText', 'separator', 'foreground'], `
         <div class="preview-v09-sample preview-v09-illustrative-material">
           <div class="preview-v09-row"><strong class="preview-v09-text"${keyAttr(['text'])}>Chapters</strong></div>
@@ -159,7 +159,7 @@ export default {
               <span class="preview-v09-accent"${keyAttr(['accent'])}>Page: 1</span>
             </div>
           </div>
-          <div class="preview-v09-chapter preview-v09-completed" aria-label="Completed chapter; approximate app opacity">
+          <div class="preview-v09-chapter preview-v09-completed" aria-label="Completed chapter">
             <span class="preview-v09-language"${keyAttr(['textTertiary'])}>en</span>
             <div class="preview-v09-copy">
               <strong class="preview-v09-text"${keyAttr(['text'])}>Chapter 13 · First steps</strong>
@@ -177,11 +177,11 @@ export default {
         </div>`);
 
     const reader = scene('reader', 'Reader',
-      'The gutter uses background; page artwork stays independent. Floating fills approximate the light/dark system material, chosen by mode, with border outlines. The exact native material formula is unresolved.',
+      'Page margins, title and subtitle, plus floating progress and settings controls from the reader.',
       ['background', 'border', 'text', 'textSecondary'], `
         <div class="preview-v09-reader-sample">
           <div class="preview-v09-reader-gutter"${keyAttr(['background'])}></div>
-          <div class="preview-v09-reader-media" aria-label="Illustrative page artwork, independent of theme">
+          <div class="preview-v09-reader-media" aria-label="Sample page artwork">
             <div class="preview-v09-media-panel"></div>
             <div class="preview-v09-media-panels"><div></div><div></div></div>
           </div>
@@ -189,18 +189,18 @@ export default {
             <strong class="preview-v09-text"${keyAttr(['text'])}>Chapter 15</strong>
             <span class="preview-v09-subtext"${keyAttr(['textSecondary'])}>The Paper Garden</span>
           </div>
-          <div class="preview-v09-reader-progress preview-v09-native-material"${keyAttr(['border'])} aria-label="Illustrative native progress control"></div>
-          <div class="preview-v09-reader-settings-control preview-v09-native-material"${keyAttr(['border'])} aria-label="Illustrative native settings control"><span data-linked-keys="" aria-hidden="true">≡</span></div>
+          <div class="preview-v09-reader-progress preview-v09-native-material"${keyAttr(['border'])} aria-label="Reading progress control"></div>
+          <div class="preview-v09-reader-settings-control preview-v09-native-material"${keyAttr(['border'])} aria-label="Reader settings control"><span data-linked-keys="" aria-hidden="true">≡</span></div>
         </div>`);
 
     const settings = scene('settings', 'Reader settings',
-      'Grouped rows and help text. The track uses accent; the white thumb is an illustrative native control, with no theme-key assignment.',
+      'Page-width slider, help text and reading-direction row from Reader settings.',
       ['background', 'foreground', 'text', 'textSecondary', 'accent'], `
         <div class="preview-v09-sample preview-v09-canvas"${keyAttr(['background'])}>
           <div class="preview-v09-group preview-v09-copy"${keyAttr(['foreground'])}>
             <span class="preview-v09-text"${keyAttr(['text'])}>Maximum page width</span>
             <span class="preview-v09-subtext"${keyAttr(['textSecondary'])}>Limit the width of reader pages</span>
-            <div class="preview-v09-slider"${keyAttr(['accent'])}><span data-linked-keys="" aria-label="Illustrative white native thumb"></span></div>
+            <div class="preview-v09-slider"${keyAttr(['accent'])}><span data-linked-keys="" aria-label="Slider thumb"></span></div>
           </div>
           <div class="preview-v09-group preview-v09-row"${keyAttr(['foreground'])}>
             <span class="preview-v09-text"${keyAttr(['text'])}>Reading direction</span>
@@ -208,8 +208,8 @@ export default {
           </div>
         </div>`);
 
-    const alphaStudy = scene('alpha-study', 'Alpha study — app placement unconfirmed',
-      'A raw color-compositing study, not an observed Paperback screen. overlay is drawn at its stored alpha over the named base, without additional opacity.',
+    const alphaStudy = scene('alpha-study', 'Overlay comparison',
+      'Overlay over background and foreground colors. Its location in Paperback is still unknown.',
       ['overlay', 'background', 'foreground'], `
         <div class="preview-v09-alpha-grid">
           <figure>
@@ -231,7 +231,7 @@ export default {
     const unavailableCount = colorEntries.length - available.size;
 
     return {
-      summaryText: `${colorEntries.length} loaded keys · ${mode} mode · ${confirmedCount} observed roles, ${unresolvedCount} unresolved${unavailableCount ? `, ${unavailableCount} unavailable in this mode` : ''}`,
+      summaryText: `${colorEntries.length} keys · ${mode} mode · ${confirmedCount} mapped, ${unresolvedCount} not mapped${unavailableCount ? `, ${unavailableCount} unavailable in this mode` : ''}`,
       stageHtml: `<div class="preview-v09" data-preview-mode="${mode === 'dark' ? 'dark' : 'light'}">${discovery}${filters}${details}${chapters}${reader}${settings}${alphaStudy}</div>`
     };
   }

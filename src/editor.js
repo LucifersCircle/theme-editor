@@ -467,12 +467,12 @@ function getPreviewTemplateFallback() {
     <section class="preview-shell" data-preview-root>
       <div class="preview-intro">
         <div class="preview-intro-copy">
-          <span class="preview-family-badge" data-preview-family-badge>Preview fallback</span>
-          <h3>Component Sandbox</h3>
-          <p data-preview-family-note>Template fetch failed. Using inline preview markup.</p>
+          <span class="preview-family-badge" data-preview-family-badge>Loading preview</span>
+          <h3>Component preview</h3>
+          <p data-preview-family-note>Select a theme to preview its colors.</p>
         </div>
         <div class="preview-meta">
-          <span class="preview-meta-label">Live bindings</span>
+          <span class="preview-meta-label">Live preview</span>
           <strong>Editor changes apply instantly</strong>
           <span class="preview-help-desktop">Hover to see linked colors. Click a fill or text to edit its color.</span>
           <span class="preview-help-mobile">Tap a component to edit its color. If colors overlap, choose one.</span>
@@ -483,7 +483,7 @@ function getPreviewTemplateFallback() {
         <div class="preview-token-header">
           <div>
             <span class="preview-token-label">Loaded keys</span>
-            <h3>Token coverage</h3>
+            <h3>Color mappings</h3>
           </div>
           <p data-preview-token-summary></p>
         </div>
@@ -546,8 +546,8 @@ function buildFallbackPreviewMarkup() {
   const keys = colorEntries.map(entry => entry.name);
   return `
     <section class="preview-showcase preview-fallback"${keyAttr(keys)}>
-      <h4>Custom key set</h4>
-      <p>The loaded theme does not match the bundled .8 or .9 defaults closely enough to pick a dedicated component layout yet.</p>
+      <h4>Custom colors</h4>
+      <p>These keys have not been mapped to Paperback components yet. Select a color below to edit it.</p>
       <div class="preview-key-list">
         ${keys.map(key => `<span class="preview-key-chip"${keyAttr([key])}>${escapeHtml(key)}</span>`).join('')}
       </div>
@@ -588,12 +588,12 @@ function buildPreviewTokens(coverage = {}) {
     const status = document.createElement('span');
     status.className = 'preview-token-status';
     status.textContent = mapping?.status === 'confirmed'
-      ? 'Observed in app'
-      : mapping?.status === 'unresolved' ? 'App use unresolved' : 'Raw color';
+      ? 'Mapped'
+      : 'Not mapped';
 
     const note = document.createElement('span');
     note.className = 'preview-token-note';
-    note.textContent = mapping?.note || 'No observed app role recorded for this key.';
+    note.textContent = mapping?.note || 'App location not yet identified.';
 
     meta.append(name, hex, alpha, status, note);
     token.append(swatch, meta);
@@ -618,7 +618,7 @@ async function renderPreview() {
 
   const familyId = detectPreviewFamily();
   let title = 'Custom keys';
-  let description = 'Showing a generic preview shell because the imported theme uses a non-standard key set.';
+  let description = 'Color samples from your custom theme.';
   let stageHtml = buildFallbackPreviewMarkup();
   let summaryText = `${colorEntries.length} keys in ${mode} mode`;
   let coverage = {};

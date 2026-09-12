@@ -155,7 +155,7 @@ function getPreviewTemplateFallback() {
         <div class="preview-meta">
           <span class="preview-meta-label">Live bindings</span>
           <strong>Editor changes apply instantly</strong>
-          <span>Hover a sample or color row to explore its bindings.</span>
+          <span>Hover to see linked colors. Click a fill or text to edit its color.</span>
         </div>
       </div>
       <div class="preview-stage" data-preview-stage></div>
@@ -334,9 +334,10 @@ async function renderPreview() {
   stage.innerHTML = stageHtml;
   summary.textContent = summaryText;
   buildPreviewTokens(coverage);
+  preparePreviewEditing();
 }
 
-// ── Hover Linking ──────────────────────────────────────────────────────────
+// ── Preview Linking and Editing ────────────────────────────────────────────
 
 function getLinkedKeys(element) {
   if (!element) return [];
@@ -356,6 +357,67 @@ function normalizeHoverNode(node) {
 function getLinkedHoverHost(node) {
   const element = normalizeHoverNode(node);
   return element?.closest('.color-row[data-color], [data-linked-keys]') || null;
+}
+
+function preparePreviewEditing() {
+  const availableKeys = new Set(colorEntries.map(entry => entry.name));
+  previewContent.querySelectorAll('[data-linked-keys]').forEach(block => {
+    // The first binding is the surface's editable color. Nested text has its own binding.
+    const key = getLinkedKeys(block).find(key => availableKeys.has(key));
+    if (!key) return;
+
+    block.dataset.previewEditKey = key;
+    block.title = `Edit ${key} color`;
+
+    // Keep nested surfaces out of the button semantics; each color is also
+    // keyboard-accessible through its standalone token card.
+    if (block.matches('button') || !block.querySelector('[data-linked-keys], button, a[href], input, select, textarea')) {
+      block.removeAttribute('aria-hidden');
+      if (!block.matches('button')) {
+        block.tabIndex = 0;
+        block.setAttribute('role', 'button');
+      }
+      block.setAttribute('aria-label', `Edit ${key} color`);
+    }
+  });
+}
+
+function editPreviewColor(host) {
+  const key = host.dataset.previewEditKey;
+  if (!key) return;
+
+  const row = Array.from(editorContent.querySelectorAll('.color-row'))
+    .find(row => row.dataset.color === key);
+  const picker = row?.querySelector('.color-picker');
+  if (!picker || picker.disabled) return;
+
+  const viewport = editorContent.getBoundingClientRect();
+  const top = viewport.top + editorContent.clientTop;
+  const bounds = row.getBoundingClientRect();
+  if (bounds.top < top || bounds.bottom > top + editorContent.clientHeight) {
+    // Only move the editor pane. Finish scrolling before opening the native picker.
+    editorContent.scrollTop += bounds.top - top - (editorContent.clientHeight - bounds.height) / 2;
+  }
+
+  picker.focus({ preventScroll: true });
+  updateHoverHighlights([key]);
+  try {
+    if (typeof picker.showPicker === 'function') {
+      picker.showPicker();
+      return;
+    }
+  } catch {
+    // Fall back to the input's normal activation in browsers without picker support.
+  }
+  picker.click();
+}
+
+function handlePreviewEdit(event) {
+  const host = getLinkedHoverHost(event.target);
+  // An empty binding intentionally stops clicks on illustrative artwork/native parts.
+  if (!host || !previewContent.contains(host) || !host.dataset.previewEditKey) return;
+  event.preventDefault();
+  editPreviewColor(host);
 }
 
 function updateHoverHighlights(keys) {
@@ -405,6 +467,13 @@ editorContent.addEventListener('mouseover', handleLinkedHoverStart);
 editorContent.addEventListener('mouseout', handleLinkedHoverEnd);
 previewContent.addEventListener('mouseover', handleLinkedHoverStart);
 previewContent.addEventListener('mouseout', handleLinkedHoverEnd);
+previewContent.addEventListener('click', handlePreviewEdit);
+previewContent.addEventListener('keydown', event => {
+  if (event.repeat || (event.key !== 'Enter' && event.key !== ' ')) return;
+  // Native buttons already generate one click for keyboard activation.
+  if (!event.target.matches('[role="button"]:not(button)')) return;
+  handlePreviewEdit(event);
+});
 
 // ── Local Persistence ──────────────────────────────────────────────────────
 
@@ -649,6 +718,7 @@ function buildEditor() {
     picker.className = 'color-picker';
     picker.value = hex;
     picker.dataset.color = entry.name;
+    picker.setAttribute('aria-label', `Edit ${entry.name} color`);
 
     const hexInput = document.createElement('input');
     hexInput.type = 'text';

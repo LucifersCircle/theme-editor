@@ -379,7 +379,8 @@ html, body {
   z-index: -1;
 }
 
-.color-row.linked-hover::before {
+.color-row.linked-hover::before,
+.color-row:focus-within::before {
   opacity: 1;
 }
 

@@ -51,14 +51,47 @@
       <div class="panel-header">
         <h2>Preview</h2>
         <span class="preview-mobile-hint">Tap a color to edit</span>
-        <label id="preview-color-editor" class="preview-color-editor" hidden>
-          <span id="preview-color-name"></span>
-          <input id="preview-color-picker" type="color" aria-label="Edit preview color">
-        </label>
+        <button id="btn-preview-last-color" class="preview-last-color" type="button" hidden>
+          <span id="preview-last-color-name"></span>
+          <span class="preview-last-color-swatch" aria-hidden="true"></span>
+        </button>
       </div>
       <div id="preview-content" class="panel-body">
         <!-- Preview components will be loaded here -->
       </div>
+      <section id="preview-color-editor" class="preview-color-editor" hidden aria-label="Preview color editor">
+        <div class="preview-color-editor-heading">
+          <button id="btn-preview-color-link" class="preview-color-editor-title" type="button" aria-pressed="false">
+            <strong id="preview-color-name"></strong>
+            <span id="preview-color-context"><span id="preview-color-applies"></span><span id="preview-color-link-label"></span><span id="preview-color-opacity"></span></span>
+          </button>
+          <button id="btn-preview-color-done" class="btn" type="button">Done</button>
+        </div>
+        <div class="preview-color-editor-controls">
+          <div id="preview-color-field" class="preview-color-field" tabindex="0" role="group" aria-label="Saturation and brightness" aria-describedby="preview-color-field-help">
+            <span id="preview-color-thumb" aria-hidden="true"></span>
+          </div>
+          <span id="preview-color-field-help" class="visually-hidden">Drag to change saturation and brightness. Use Left and Right for saturation, Up and Down for brightness. Hold Shift for larger steps.</span>
+          <div class="preview-color-values">
+            <label class="preview-color-hue-row"><span>Hue</span><input id="preview-color-hue" type="range" min="0" max="360" step="1" value="0"></label>
+            <div class="preview-color-value-row">
+              <span id="preview-color-swatch" aria-hidden="true"></span>
+              <label for="preview-color-hex" class="visually-hidden">Hex color</label>
+              <input id="preview-color-hex" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="#RRGGBB" aria-label="Hex color" aria-describedby="preview-color-hex-error">
+              <button id="btn-preview-color-undo" class="btn" type="button">Undo</button>
+            </div>
+            <span id="preview-color-hex-error" class="preview-color-hex-error" role="status" hidden></span>
+          </div>
+        </div>
+        <div class="preview-color-history">
+          <select id="preview-color-history-kind" aria-label="Color history">
+            <option value="recent">Recent</option>
+            <option value="favorites">Favorites</option>
+          </select>
+          <div id="preview-color-history-list" class="preview-color-history-list" aria-label="Recent colors"></div>
+          <button id="btn-preview-favorite" class="btn" type="button" aria-pressed="false">Favorite</button>
+        </div>
+      </section>
     </section>
   </main>
 
@@ -113,7 +146,7 @@
       btnGlobalLink.classList.toggle('linked', globalLinked);
       btnGlobalLink.title = globalLinked ? 'All colors linked (light = dark)' : 'Colors independent';
       btnGlobalLink.setAttribute('aria-pressed', String(globalLinked));
-      btnGlobalLink.querySelector('.control-label').textContent = globalLinked ? 'Modes linked' : 'Modes separate';
+      btnGlobalLink.querySelector('.control-label').textContent = globalLinked ? 'Modes linked' : 'Modes unlinked';
 
       previewPanel.classList.toggle('collapsed', !previewVisible);
       workspace.classList.toggle('preview-hidden', !previewVisible);
@@ -129,6 +162,8 @@
       btnMobileColors.setAttribute('aria-pressed', String(mobilePanel === 'colors'));
       btnMobilePreview.setAttribute('aria-pressed', String(mobilePanel === 'preview'));
       btnMobilePreview.disabled = !previewEnabled;
+      const mobileLayout = window.matchMedia('(max-width: 700px), (pointer: coarse) and (max-height: 500px)');
+      document.body.classList.toggle('preview-editing', mobileLayout.matches && mobilePanel === 'preview' && prefs?.previewEditor?.open === true);
     })();
   </script>
   <script type="module" src="editor.js"></script>

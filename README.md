@@ -12,6 +12,8 @@ A browser-based editor for Paperback iOS app `.pbcolors` theme files. No framewo
 - **Import** existing `.pbcolors` files
 - **Export** edited themes with a custom filename and a fixed `.pbcolors` extension; uploaded filenames are prefilled
 - **Persistent state** via localStorage (edits survive page reloads)
+- **Mobile preview editing** with a compact color editor, live RGB hex entry, link toggles, Undo, and a remembered last-color shortcut
+- **Recent & favorite colors** saved in the browser; Done adds the selected color to Recent, and Favorite keeps it in your collection
 - **Reset to defaults** with one click
 
 ## Usage
@@ -22,6 +24,8 @@ A browser-based editor for Paperback iOS app `.pbcolors` theme files. No framewo
 4. Toggle between Light/Dark to edit each mode
 5. Use the link button to keep light and dark values in sync
 6. Click Export, choose a filename, and download your theme (`.pbcolors` is added automatically)
+
+On mobile, select a preview component to edit it while keeping it visible. Done adds the color to Recent; Favorite keeps it in Favorites. Hold or right-click a palette swatch to remove it. The palette, last-selected color, and open mobile editor survive page refreshes.
 
 ## `.pbcolors` Format
 

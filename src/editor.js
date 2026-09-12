@@ -25,6 +25,19 @@ let selectedDefaultId = _savedPrefs?.selectedDefaultId || 0;
 let themeManifest = [];
 let activeThemeMeta = null;
 let previewEditingKey = null;
+let previewEditTargetIndex = -1;
+let previewEditOriginal = null;
+let previewPickerHsv = { h: 0, s: 0, v: 0 };
+let previewPickerHex = null;
+let previewPickerMode = null;
+let previewPickerPointer = null;
+let editorReady = false;
+let lastPreviewEdit = typeof _savedPrefs?.previewEditor?.key === 'string' ? {
+  key: _savedPrefs.previewEditor.key,
+  targetIndex: Number.isInteger(_savedPrefs.previewEditor.targetIndex) ? _savedPrefs.previewEditor.targetIndex : -1,
+  open: _savedPrefs.previewEditor.open === true
+} : null;
+let pendingPreviewEditor = lastPreviewEdit?.open ? { ...lastPreviewEdit } : null;
 
 // ── DOM References ─────────────────────────────────────────────────────────
 const editorContent = document.getElementById('editor-content');
@@ -48,11 +61,27 @@ const workspace = document.querySelector('.workspace');
 const previewContent = document.getElementById('preview-content');
 const previewColorEditor = document.getElementById('preview-color-editor');
 const previewColorName = document.getElementById('preview-color-name');
-const previewColorPicker = document.getElementById('preview-color-picker');
+const previewColorApplies = document.getElementById('preview-color-applies');
+const previewColorLinkLabel = document.getElementById('preview-color-link-label');
+const previewColorOpacity = document.getElementById('preview-color-opacity');
+const btnPreviewColorLink = document.getElementById('btn-preview-color-link');
+const btnPreviewLastColor = document.getElementById('btn-preview-last-color');
+const previewLastColorName = document.getElementById('preview-last-color-name');
 const previewMobileHint = document.querySelector('.preview-mobile-hint');
+const previewColorField = document.getElementById('preview-color-field');
+const previewColorThumb = document.getElementById('preview-color-thumb');
+const previewColorHue = document.getElementById('preview-color-hue');
+const previewColorHex = document.getElementById('preview-color-hex');
+const previewColorHexError = document.getElementById('preview-color-hex-error');
+const previewColorSwatch = document.getElementById('preview-color-swatch');
+const btnPreviewColorDone = document.getElementById('btn-preview-color-done');
+const btnPreviewColorUndo = document.getElementById('btn-preview-color-undo');
+const previewColorHistoryKind = document.getElementById('preview-color-history-kind');
+const previewColorHistoryList = document.getElementById('preview-color-history-list');
+const btnPreviewFavorite = document.getElementById('btn-preview-favorite');
 const btnMobileColors = document.getElementById('btn-mobile-colors');
 const btnMobilePreview = document.getElementById('btn-mobile-preview');
-const mobileLayout = window.matchMedia('(max-width: 700px)');
+const mobileLayout = window.matchMedia('(max-width: 700px), (pointer: coarse) and (max-height: 500px)');
 
 let previewVisible = PREVIEW_ENABLED && _savedPrefs?.previewVisible === true;
 let mobilePanel = previewVisible && _savedPrefs?.mobilePanel === 'preview' ? 'preview' : 'colors';
@@ -71,6 +100,254 @@ const PREVIEW_DETECTION_KEYS = {
 };
 
 let exportBaseName = 'themeColors';
+
+const COLOR_HISTORY_KEY = 'theme-editor-color-history';
+const colorHistory = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLOR_HISTORY_KEY));
+    const colors = list => [...new Set((Array.isArray(list) ? list : [])
+      .filter(hex => typeof hex === 'string' && /^#[0-9a-f]{6}$/i.test(hex))
+      .map(hex => hex.toLowerCase()))];
+    return { recent: colors(saved?.recent).slice(0, 16), favorites: colors(saved?.favorites), view: saved?.view === 'favorites' ? 'favorites' : 'recent' };
+  } catch {
+    return { recent: [], favorites: [], view: 'recent' };
+  }
+})();
+
+function saveColorHistory() {
+  try {
+    localStorage.setItem(COLOR_HISTORY_KEY, JSON.stringify(colorHistory));
+  } catch {
+    // Color editing remains available when the browser cannot persist a palette.
+  }
+}
+
+function rememberRecentColors(...colors) {
+  colors.forEach(hex => {
+    hex = hex.toLowerCase();
+    colorHistory.recent = [hex, ...colorHistory.recent.filter(color => color !== hex)].slice(0, 16);
+  });
+  saveColorHistory();
+  renderPreviewColorHistory();
+}
+
+function rememberPreviewEditedColor(includeCurrent = false) {
+  if (!previewEditingKey || !previewEditOriginal) return;
+  const original = previewEditOriginal[modeKey()];
+  const current = theme?.[previewEditingKey]?.[modeKey()];
+  if (original && current && rgbaToHex(original) !== rgbaToHex(current)) {
+    rememberRecentColors(rgbaToHex(original), rgbaToHex(current));
+  } else if (current && includeCurrent) {
+    rememberRecentColors(rgbaToHex(current));
+  }
+}
+
+function syncPreviewFavorite() {
+  const saved = colorHistory.favorites.includes(previewPickerHex);
+  btnPreviewFavorite.textContent = saved ? 'Favorited' : 'Favorite';
+  btnPreviewFavorite.setAttribute('aria-pressed', String(saved));
+  btnPreviewFavorite.setAttribute('aria-label', saved ? `Remove ${previewPickerHex} from Favorites` : `Favorite ${previewPickerHex}`);
+  btnPreviewFavorite.title = btnPreviewFavorite.getAttribute('aria-label');
+  const previous = previewColorHistoryList.querySelector('.is-current');
+  const current = previewPickerHex && previewColorHistoryList.querySelector(`[data-hex="${previewPickerHex}"]`);
+  if (previous !== current) {
+    previous?.classList.remove('is-current');
+    previous?.setAttribute('aria-pressed', 'false');
+    current?.classList.add('is-current');
+    current?.setAttribute('aria-pressed', 'true');
+  }
+}
+
+function renderPreviewColorHistory() {
+  cancelPreviewHistoryPress();
+  const scrollLeft = previewColorHistoryList.scrollLeft;
+  const collection = colorHistory.view;
+  previewColorHistoryKind.value = colorHistory.view;
+  previewColorHistoryList.setAttribute('aria-label', colorHistory.view === 'favorites' ? 'Favorite colors' : 'Recent colors');
+  previewColorHistoryList.replaceChildren();
+  const colors = colorHistory[collection];
+  if (!colors.length) {
+    const empty = document.createElement('span');
+    empty.className = 'preview-color-history-empty';
+    empty.textContent = colorHistory.view === 'favorites' ? 'No favorites yet' : 'No recent colors';
+    previewColorHistoryList.appendChild(empty);
+  }
+  colors.forEach(hex => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'preview-history-swatch';
+    button.dataset.hex = hex;
+    button.style.setProperty('--history-color', hex);
+    button.title = `${hex} · Press and hold to remove`;
+    button.setAttribute('aria-label', `Use ${hex}`);
+    button.setAttribute('aria-pressed', 'false');
+    let suppressClick = false;
+    const requestRemoval = () => {
+      suppressClick = true;
+      cancelPreviewHistoryPress();
+      showPreviewHistoryRemoval(button, hex, collection);
+    };
+    button.addEventListener('pointerdown', event => {
+      if (!event.isPrimary || event.button !== 0 || previewHistoryPress) return;
+      suppressClick = false;
+      const context = { theme, key: previewEditingKey };
+      const press = {
+        pointerId: event.pointerId,
+        button,
+        x: event.clientX,
+        y: event.clientY,
+        suppress: () => { suppressClick = true; },
+        timer: setTimeout(() => {
+          if (previewHistoryPress !== press) return;
+          cancelPreviewHistoryPress();
+          if (button.isConnected && isPreviewHistoryContextCurrent(context)) requestRemoval();
+        }, 500)
+      };
+      previewHistoryPress = press;
+    });
+    button.addEventListener('pointermove', event => {
+      const press = previewHistoryPress;
+      if (press?.button !== button || press.pointerId !== event.pointerId) return;
+      if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > 10) cancelPreviewHistoryPress(true);
+    });
+    button.addEventListener('pointerup', event => {
+      if (previewHistoryPress?.button === button && previewHistoryPress.pointerId === event.pointerId) cancelPreviewHistoryPress();
+    });
+    button.addEventListener('pointercancel', event => {
+      if (previewHistoryPress?.button === button && previewHistoryPress.pointerId === event.pointerId) cancelPreviewHistoryPress(true);
+    });
+    button.addEventListener('pointerleave', () => {
+      if (previewHistoryPress?.button === button) cancelPreviewHistoryPress(true);
+    });
+    button.addEventListener('contextmenu', event => {
+      event.preventDefault();
+      requestRemoval();
+    });
+    button.addEventListener('keydown', event => {
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        if (!event.repeat) requestRemoval();
+      } else if (event.key === 'Enter' || event.key === ' ') {
+        suppressClick = false;
+      }
+    });
+    button.addEventListener('click', event => {
+      if (suppressClick) {
+        event.preventDefault();
+        event.stopPropagation();
+        suppressClick = false;
+        return;
+      }
+      if (!previewEditingKey) return;
+      previewPickerHex = null;
+      applyColorChange(previewEditingKey, hex);
+      refreshEditor();
+    });
+    previewColorHistoryList.appendChild(button);
+  });
+  previewColorHistoryList.scrollLeft = scrollLeft;
+  syncPreviewFavorite();
+}
+
+let previewHistoryPress = null;
+let previewHistoryRemovalDialog = null;
+
+function cancelPreviewHistoryPress(suppressClick = false) {
+  const press = previewHistoryPress;
+  previewHistoryPress = null;
+  if (!press) return;
+  clearTimeout(press.timer);
+  if (suppressClick) press.suppress();
+}
+
+function isPreviewHistoryContextCurrent(context) {
+  return Boolean(context.key) && previewEditingKey === context.key
+    && theme === context.theme && !previewColorEditor.hidden;
+}
+
+function closePreviewHistoryRemoval() {
+  cancelPreviewHistoryPress(true);
+  if (previewHistoryRemovalDialog?.open) previewHistoryRemovalDialog.close();
+}
+
+function showPreviewHistoryRemoval(opener, hex, collection) {
+  const context = { theme, key: previewEditingKey };
+  if (!isPreviewHistoryContextCurrent(context) || !opener.isConnected
+    || previewHistoryRemovalDialog || !colorHistory[collection]?.includes(hex)) return;
+
+  const index = Array.from(previewColorHistoryList.querySelectorAll('button')).indexOf(opener);
+  const dialog = document.createElement('dialog');
+  dialog.className = 'export-dialog preview-history-remove-dialog';
+  dialog.setAttribute('aria-labelledby', 'preview-history-remove-title');
+  dialog.setAttribute('aria-describedby', 'preview-history-remove-description');
+  const title = document.createElement('h2');
+  title.id = 'preview-history-remove-title';
+  title.textContent = 'Remove color';
+  const description = document.createElement('p');
+  description.id = 'preview-history-remove-description';
+  description.textContent = `Remove ${hex} from ${collection === 'favorites' ? 'Favorites' : 'Recent'}?`;
+  const colorRow = document.createElement('div');
+  colorRow.className = 'preview-history-remove-color';
+  const swatch = document.createElement('span');
+  swatch.className = 'preview-history-remove-swatch';
+  swatch.style.backgroundColor = hex;
+  swatch.setAttribute('aria-hidden', 'true');
+  colorRow.append(swatch, description);
+  const actions = document.createElement('div');
+  actions.className = 'export-actions';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn';
+  cancel.textContent = 'Cancel';
+  cancel.autofocus = true;
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'btn export-confirm';
+  remove.textContent = 'Remove';
+  actions.append(cancel, remove);
+  dialog.append(title, colorRow, actions);
+
+  let removed = false;
+  cancel.addEventListener('click', () => dialog.close());
+  remove.addEventListener('click', () => {
+    if (isPreviewHistoryContextCurrent(context)) {
+      removed = true;
+      colorHistory[collection] = colorHistory[collection].filter(color => color !== hex);
+      saveColorHistory();
+      renderPreviewColorHistory();
+    }
+    dialog.close();
+  });
+  dialog.addEventListener('keydown', event => {
+    if (event.key === 'Escape') event.stopPropagation();
+  });
+  dialog.addEventListener('close', () => {
+    dialog.remove();
+    if (previewHistoryRemovalDialog === dialog) previewHistoryRemovalDialog = null;
+    if (!isPreviewHistoryContextCurrent(context)) return;
+    const buttons = Array.from(previewColorHistoryList.querySelectorAll('button'));
+    const target = !removed && opener.isConnected ? opener
+      : buttons[Math.min(Math.max(index, 0), buttons.length - 1)] || previewColorHistoryKind;
+    target.focus({ preventScroll: true });
+  });
+  previewHistoryRemovalDialog = dialog;
+  previewColorEditor.appendChild(dialog);
+  dialog.showModal();
+}
+
+previewColorHistoryKind.addEventListener('change', () => {
+  colorHistory.view = previewColorHistoryKind.value === 'favorites' ? 'favorites' : 'recent';
+  saveColorHistory();
+  renderPreviewColorHistory();
+});
+btnPreviewFavorite.addEventListener('click', () => {
+  if (!previewEditingKey || !previewPickerHex) return;
+  colorHistory.favorites = colorHistory.favorites.includes(previewPickerHex)
+    ? colorHistory.favorites.filter(hex => hex !== previewPickerHex)
+    : [previewPickerHex, ...colorHistory.favorites];
+  saveColorHistory();
+  renderPreviewColorHistory();
+});
 
 // ── Color Conversion ───────────────────────────────────────────────────────
 
@@ -108,6 +385,35 @@ function rgbaToCss(color) {
   const b = floatToByte(color.blue);
   const a = color.alpha;
   return a === 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+function rgbaToHsv(color, previous = { h: 0, s: 0 }) {
+  const [r, g, b] = [color.red, color.green, color.blue].map(channel => Math.max(0, Math.min(1, channel)));
+  const max = Math.max(r, g, b);
+  const delta = max - Math.min(r, g, b);
+  let h = previous.h;
+  if (delta) {
+    h = max === r ? (g - b) / delta : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
+    h = (h * 60 + 360) % 360;
+  }
+  // Gray retains its chosen hue; black also retains its saturation.
+  return { h, s: max ? delta / max : previous.s, v: max };
+}
+
+function hsvToHex({ h, s, v }) {
+  const channel = offset => {
+    const k = (offset + h / 60) % 6;
+    return v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
+  };
+  return rgbaToHex({ red: channel(5), green: channel(3), blue: channel(1) });
+}
+
+function normalizeRgbHex(value) {
+  let hex = value.trim().replace(/^#/, '');
+  // Deliberately reject alpha-bearing #RGBA / #RRGGBBAA values.
+  if (!/^(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex)) return null;
+  if (hex.length === 3) hex = hex.split('').map(channel => channel + channel).join('');
+  return `#${hex.toLowerCase()}`;
 }
 
 function camelToKebab(value) {
@@ -343,12 +649,15 @@ async function renderPreview() {
 
   if (renderNonce !== previewRenderNonce) return;
 
+  const scrollTop = previewContent.scrollTop;
   badge.textContent = title;
   note.textContent = description;
   stage.innerHTML = stageHtml;
   summary.textContent = summaryText;
   buildPreviewTokens(coverage);
   preparePreviewEditing();
+  if (previewEditingKey) previewContent.scrollTop = scrollTop;
+  restoreSavedPreviewColorEditor();
 }
 
 // ── Preview Linking and Editing ────────────────────────────────────────────
@@ -396,6 +705,7 @@ function preparePreviewEditing() {
       block.setAttribute('aria-label', `Edit ${key} color`);
     }
   });
+  if (previewEditingKey) getPreviewEditTarget()?.classList.add('preview-edit-target');
   refreshLinkedHighlights();
 }
 
@@ -406,53 +716,187 @@ function getEditorRow(key) {
 
 function syncPreviewColorEditor() {
   const color = previewEditingKey && theme?.[previewEditingKey]?.[modeKey()];
-  previewColorEditor.hidden = !color;
-  previewMobileHint.hidden = Boolean(color);
+  const editing = Boolean(color) && mobileLayout.matches;
+  previewColorEditor.hidden = !editing;
+  document.body.classList.toggle('preview-editing', editing || Boolean(pendingPreviewEditor && mobileLayout.matches && mobilePanel === 'preview'));
+  const lastColor = lastPreviewEdit && theme?.[lastPreviewEdit.key]?.[modeKey()];
+  btnPreviewLastColor.hidden = !lastColor;
+  previewMobileHint.hidden = Boolean(lastColor);
+  if (lastColor) {
+    previewLastColorName.textContent = lastPreviewEdit.key;
+    btnPreviewLastColor.style.setProperty('--last-color', rgbaToCss(lastColor));
+    btnPreviewLastColor.setAttribute('aria-label', `Edit ${lastPreviewEdit.key} again`);
+  }
   if (!color) {
     previewEditingKey = null;
     previewColorName.textContent = '';
-    delete previewColorPicker.dataset.linkedKeys;
+    previewPickerHex = null;
+    previewPickerMode = null;
+    delete previewColorEditor.dataset.linkedKeys;
     return;
   }
+  const hex = rgbaToHex(color);
+  if (hex !== previewPickerHex || mode !== previewPickerMode) {
+    previewPickerHsv = rgbaToHsv(color, previewPickerHsv);
+    previewPickerHex = hex;
+    previewPickerMode = mode;
+  }
   previewColorName.textContent = previewEditingKey;
-  previewColorPicker.value = rgbaToHex(color);
-  previewColorPicker.dataset.linkedKeys = previewEditingKey;
-  previewColorPicker.setAttribute('aria-label', `Edit ${previewEditingKey} color`);
+  const linked = isLinked(previewEditingKey);
+  previewColorApplies.textContent = linked ? 'Applies to Light & Dark · ' : `Applies to ${mode === 'dark' ? 'Dark' : 'Light'} · `;
+  previewColorLinkLabel.textContent = linked ? 'Linked' : 'Unlinked';
+  previewColorOpacity.textContent = color.alpha < 1 ? ` · ${Math.round(color.alpha * 100)}% opacity` : '';
+  btnPreviewColorLink.setAttribute('aria-pressed', String(linked));
+  btnPreviewColorLink.setAttribute('aria-label', `${previewEditingKey}: ${linked ? 'Unlink' : 'Link'} Light and Dark`);
+  previewColorEditor.dataset.linkedKeys = previewEditingKey;
+  previewColorField.style.setProperty('--picker-hue', `hsl(${previewPickerHsv.h}, 100%, 50%)`);
+  previewColorThumb.style.left = `${previewPickerHsv.s * 100}%`;
+  previewColorThumb.style.top = `${(1 - previewPickerHsv.v) * 100}%`;
+  previewColorField.setAttribute('aria-label', `Saturation ${Math.round(previewPickerHsv.s * 100)}%, brightness ${Math.round(previewPickerHsv.v * 100)}%`);
+  previewColorHue.value = previewPickerHsv.h;
+  previewColorHue.setAttribute('aria-valuetext', `${Math.round(previewPickerHsv.h)} degrees`);
+  previewColorSwatch.style.backgroundColor = hex;
+  // Do not replace a partially typed hex value during a live update.
+  if (document.activeElement !== previewColorHex) {
+    previewColorHex.value = hex;
+    clearPreviewHexError();
+  }
+  btnPreviewColorUndo.disabled = !previewEditOriginal
+    || JSON.stringify(theme[previewEditingKey]) === JSON.stringify(previewEditOriginal);
+  syncPreviewFavorite();
 }
 
-function editPreviewColor(host) {
+function getPreviewEditTarget() {
+  const target = previewContent.querySelectorAll('[data-linked-keys]')[previewEditTargetIndex];
+  return target && getLinkedKeys(target).includes(previewEditingKey) ? target : null;
+}
+
+function findRememberedPreviewTarget(selection) {
+  const targets = Array.from(previewContent.querySelectorAll('[data-linked-keys]'));
+  const target = targets[selection.targetIndex];
+  return target && !target.matches('.preview-fallback') && getLinkedKeys(target).includes(selection.key) ? target
+    : targets.find(element => !element.matches('.preview-fallback') && getLinkedKeys(element).includes(selection.key));
+}
+
+function restoreSavedPreviewColorEditor() {
+  if (!pendingPreviewEditor || !editorReady) return;
+  const selection = pendingPreviewEditor;
+  pendingPreviewEditor = null;
+  const target = findRememberedPreviewTarget(selection);
+  if (mobileLayout.matches && mobilePanel === 'preview' && theme?.[selection.key]?.[modeKey()] && target) {
+    editPreviewColor(selection.key, target);
+  } else {
+    if (lastPreviewEdit) lastPreviewEdit.open = false;
+    syncPreviewColorEditor();
+    savePrefs();
+  }
+}
+
+function rememberPreviewEditTarget(host, key) {
+  const component = getLayeredPreviewComponent(host) || host;
+  let target = component;
+  // A background choice can select a color used by a child, such as an accent arrow.
+  if (!getLinkedKeys(target).includes(key)) {
+    target = Array.from(component.querySelectorAll('[data-linked-keys]'))
+      .find(element => getLinkedKeys(element).includes(key));
+  }
+  if (!target) {
+    target = component.parentElement?.closest('[data-linked-keys]');
+    while (target && !getLinkedKeys(target).includes(key)) target = target.parentElement?.closest('[data-linked-keys]');
+  }
+  previewEditTargetIndex = Array.from(previewContent.querySelectorAll('[data-linked-keys]')).indexOf(target);
+}
+
+function scrollPreviewEditTargetIntoView() {
+  const target = getPreviewEditTarget();
+  if (!target || !mobileLayout.matches) return;
+  const viewport = previewContent.getBoundingClientRect();
+  const bounds = target.getBoundingClientRect();
+  const availableHeight = previewContent.clientHeight;
+  // Move only the preview pane, keeping the chosen component above the dock.
+  const offset = bounds.height > availableHeight - 24 ? 12 : (availableHeight - bounds.height) / 2;
+  previewContent.scrollTop += bounds.top - viewport.top - offset;
+}
+
+function updatePreviewEditViewport() {
+  document.body.style.setProperty('--preview-edit-viewport-height', `${window.visualViewport?.height || window.innerHeight}px`);
+}
+
+function resizePreviewColorEditor() {
+  updatePreviewEditViewport();
+  if (previewEditingKey && mobileLayout.matches) requestAnimationFrame(scrollPreviewEditTargetIntoView);
+}
+
+function releasePreviewPickerPointer() {
+  const pointer = previewPickerPointer;
+  previewPickerPointer = null;
+  if (pointer !== null && previewColorField.hasPointerCapture(pointer)) previewColorField.releasePointerCapture(pointer);
+}
+
+function closePreviewColorEditor(restoreFocus = true, rememberColor = true) {
+  closePreviewHistoryRemoval();
+  const target = getPreviewEditTarget();
+  releasePreviewPickerPointer();
+  if (rememberColor) rememberPreviewEditedColor(true);
+  previewEditingKey = null;
+  if (lastPreviewEdit && !pendingPreviewEditor) lastPreviewEdit.open = false;
+  // A reset/import may already have replaced the theme before blur commits text.
+  if (previewColorEditor.contains(document.activeElement)) document.activeElement.blur();
+  previewEditOriginal = null;
+  syncPreviewColorEditor();
+  previewContent.querySelector('.preview-edit-target')?.classList.remove('preview-edit-target');
+  if (restoreFocus && target?.isConnected) {
+    const focusTarget = target.matches('[tabindex], button') ? target : target.querySelector('[tabindex], button');
+    focusTarget?.focus({ preventScroll: true });
+    const viewport = previewContent.getBoundingClientRect();
+    const bounds = target.getBoundingClientRect();
+    if (bounds.top < viewport.top || bounds.bottom > viewport.bottom) {
+      previewContent.scrollTop += bounds.top - viewport.top - 12;
+    }
+  }
+  clearHoverHighlights();
+  savePrefs();
+}
+
+function editPreviewColor(host, sourceHost = host) {
   const key = typeof host === 'string' ? host : host.dataset.previewEditKey;
   if (!key || !theme?.[key]?.[modeKey()]) return;
 
-  let picker;
   if (mobileLayout.matches) {
-    // This control lives in the header so live preview updates cannot detach it.
+    releasePreviewPickerPointer();
+    rememberPreviewEditedColor();
     previewEditingKey = key;
+    previewPickerHex = null;
+    previewPickerHsv = { h: 0, s: 0, v: 0 };
+    previewEditOriginal = JSON.parse(JSON.stringify(theme[key]));
+    rememberPreviewEditTarget(sourceHost, key);
+    lastPreviewEdit = { key, targetIndex: previewEditTargetIndex, open: true };
+    updatePreviewEditViewport();
     syncPreviewColorEditor();
-    picker = previewColorPicker;
-  } else {
-    const row = getEditorRow(key);
-    picker = row?.querySelector('.color-picker');
-    if (!picker || picker.disabled) return;
+    renderPreviewColorHistory();
+    previewContent.querySelector('.preview-edit-target')?.classList.remove('preview-edit-target');
+    getPreviewEditTarget()?.classList.add('preview-edit-target');
+    hoveredLinkedHost = null;
+    previewColorField.focus({ preventScroll: true });
+    refreshLinkedHighlights(previewColorField);
+    scrollPreviewEditTargetIntoView();
+    savePrefs();
+    return;
+  }
 
-    const viewport = editorContent.getBoundingClientRect();
-    const top = viewport.top + editorContent.clientTop;
-    const bounds = row.getBoundingClientRect();
-    if (bounds.top < top || bounds.bottom > top + editorContent.clientHeight) {
-      // Only move the editor pane. Finish scrolling before opening the native picker.
-      editorContent.scrollTop += bounds.top - top - (editorContent.clientHeight - bounds.height) / 2;
-    }
+  const row = getEditorRow(key);
+  const picker = row?.querySelector('.color-picker');
+  if (!picker || picker.disabled) return;
+  const viewport = editorContent.getBoundingClientRect();
+  const top = viewport.top + editorContent.clientTop;
+  const bounds = row.getBoundingClientRect();
+  if (bounds.top < top || bounds.bottom > top + editorContent.clientHeight) {
+    editorContent.scrollTop += bounds.top - top - (editorContent.clientHeight - bounds.height) / 2;
   }
 
   hoveredLinkedHost = null;
   picker.focus({ preventScroll: true });
   refreshLinkedHighlights(picker);
-  if (picker === previewColorPicker) {
-    // Lay out the newly revealed control before Safari anchors its native picker.
-    picker.getBoundingClientRect();
-    picker.click();
-    return;
-  }
   try {
     if (typeof picker.showPicker === 'function') {
       picker.showPicker();
@@ -464,11 +908,151 @@ function editPreviewColor(host) {
   picker.click();
 }
 
-previewColorPicker.addEventListener('input', event => {
-  if (!previewEditingKey || !theme?.[previewEditingKey]?.[modeKey()]) return;
-  applyColorChange(previewEditingKey, event.target.value);
+function applyPreviewPickerHsv() {
+  if (!previewEditingKey) return;
+  previewPickerHex = hsvToHex(previewPickerHsv);
+  applyColorChange(previewEditingKey, previewPickerHex);
+  refreshEditor();
+}
+
+function updatePreviewPickerPointer(event) {
+  const bounds = previewColorField.getBoundingClientRect();
+  if (!bounds.width || !bounds.height) return;
+  previewPickerHsv.s = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+  previewPickerHsv.v = 1 - Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height));
+  applyPreviewPickerHsv();
+}
+
+previewColorField.addEventListener('pointerdown', event => {
+  if (!event.isPrimary || event.button !== 0 || previewPickerPointer !== null) return;
+  event.preventDefault();
+  previewPickerPointer = event.pointerId;
+  previewColorField.setPointerCapture(event.pointerId);
+  previewColorField.focus({ preventScroll: true });
+  updatePreviewPickerPointer(event);
+});
+previewColorField.addEventListener('pointermove', event => {
+  if (event.pointerId === previewPickerPointer) updatePreviewPickerPointer(event);
+});
+previewColorField.addEventListener('pointerup', event => {
+  if (event.pointerId !== previewPickerPointer) return;
+  updatePreviewPickerPointer(event);
+  releasePreviewPickerPointer();
+});
+previewColorField.addEventListener('pointercancel', event => {
+  if (event.pointerId === previewPickerPointer) releasePreviewPickerPointer();
+});
+previewColorField.addEventListener('lostpointercapture', event => {
+  if (event.pointerId === previewPickerPointer) previewPickerPointer = null;
+});
+previewColorField.addEventListener('keydown', event => {
+  const step = event.shiftKey ? 0.1 : 0.01;
+  const adjustments = { ArrowLeft: ['s', -step], ArrowRight: ['s', step], ArrowDown: ['v', -step], ArrowUp: ['v', step] };
+  const adjustment = adjustments[event.key];
+  if (!adjustment) return;
+  event.preventDefault();
+  const [channel, amount] = adjustment;
+  previewPickerHsv[channel] = Math.max(0, Math.min(1, previewPickerHsv[channel] + amount));
+  applyPreviewPickerHsv();
+});
+previewColorHue.addEventListener('input', () => {
+  previewPickerHsv.h = Number(previewColorHue.value);
+  applyPreviewPickerHsv();
+});
+
+function clearPreviewHexError() {
+  previewColorHex.removeAttribute('aria-invalid');
+  previewColorHexError.hidden = true;
+  previewColorHexError.textContent = '';
+}
+
+function applyPreviewHex() {
+  if (!previewEditingKey || !theme?.[previewEditingKey]?.[modeKey()]) return false;
+  const hex = normalizeRgbHex(previewColorHex.value);
+  if (!hex) {
+    previewColorHex.setAttribute('aria-invalid', 'true');
+    previewColorHexError.textContent = 'Use 3 or 6 hex digits. Alpha is not supported.';
+    previewColorHexError.hidden = false;
+    return false;
+  }
+  clearPreviewHexError();
+  if (hex !== rgbaToHex(theme[previewEditingKey][modeKey()])) {
+    previewPickerHex = null;
+    applyColorChange(previewEditingKey, hex);
+    refreshEditor();
+  }
+  previewColorHex.value = hex;
+  return true;
+}
+let selectPreviewHexOnClick = false;
+previewColorHex.addEventListener('pointerdown', () => {
+  selectPreviewHexOnClick = document.activeElement !== previewColorHex;
+});
+previewColorHex.addEventListener('focus', () => {
+  const value = previewColorHex.value;
+  // Safari can place its caret after the focus event's synchronous selection.
+  requestAnimationFrame(() => {
+    if (document.activeElement === previewColorHex && previewColorHex.value === value) {
+      previewColorHex.setSelectionRange(0, value.length);
+    }
+  });
+});
+previewColorHex.addEventListener('click', () => {
+  if (selectPreviewHexOnClick) previewColorHex.select();
+  selectPreviewHexOnClick = false;
+});
+previewColorHex.addEventListener('input', () => {
+  clearPreviewHexError();
+  const hex = normalizeRgbHex(previewColorHex.value);
+  if (!hex || !previewEditingKey || !theme?.[previewEditingKey]?.[modeKey()]) return;
+  if (hex === rgbaToHex(theme[previewEditingKey][modeKey()])) return;
+  // Apply complete RGB values without rewriting the draft or moving its caret.
+  previewPickerHex = null;
+  applyColorChange(previewEditingKey, hex);
   refreshEditor();
 });
+previewColorHex.addEventListener('change', applyPreviewHex);
+previewColorHex.addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    if (applyPreviewHex()) previewColorHex.blur();
+  }
+});
+btnPreviewColorDone.addEventListener('click', () => {
+  // Validate the draft even if iOS already moved focus to Done.
+  if (!applyPreviewHex()) {
+    previewColorHex.focus({ preventScroll: true });
+    return;
+  }
+  closePreviewColorEditor();
+});
+btnPreviewColorLink.addEventListener('click', () => {
+  if (!previewEditingKey) return;
+  toggleLinked(previewEditingKey);
+  syncPreviewColorEditor();
+});
+btnPreviewLastColor.addEventListener('click', () => {
+  if (!lastPreviewEdit || !theme?.[lastPreviewEdit.key]?.[modeKey()]) return;
+  const target = findRememberedPreviewTarget(lastPreviewEdit);
+  if (target) editPreviewColor(lastPreviewEdit.key, target);
+});
+btnPreviewColorUndo.addEventListener('click', () => {
+  if (!previewEditingKey || !previewEditOriginal) return;
+  theme[previewEditingKey] = JSON.parse(JSON.stringify(previewEditOriginal));
+  colorEntries = detectColors(theme);
+  previewPickerHex = null;
+  refreshEditor();
+  saveState();
+  void renderPreview();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && previewEditingKey && !document.querySelector('.preview-color-dialog, .preview-history-remove-dialog')) closePreviewColorEditor();
+});
+mobileLayout.addEventListener('change', () => {
+  if (!mobileLayout.matches && previewEditingKey) closePreviewColorEditor(false);
+});
+window.visualViewport?.addEventListener('resize', resizePreviewColorEditor);
+window.addEventListener('resize', resizePreviewColorEditor);
 
 function isCompactPreviewComponent(element) {
   // Only these controls combine their nested labels into one editing target.
@@ -600,8 +1184,7 @@ function showPreviewColorChooser(host, choices) {
       selected = true;
       dialog.close();
       dialog.remove();
-      // Keep picker activation in this user gesture, after the modal is gone.
-      editPreviewColor(key);
+      editPreviewColor(key, host);
     });
     list.appendChild(button);
   });
@@ -708,11 +1291,16 @@ let hoveredLinkedHost = null;
 
 function getLiveLinkedHost(node) {
   const host = getLinkedHoverHost(node);
-  return host?.isConnected && (editorContent.contains(host) || previewContent.contains(host) || host === previewColorPicker)
+  return host?.isConnected && (editorContent.contains(host) || previewContent.contains(host) || host === previewColorEditor)
     ? host : null;
 }
 
 function refreshLinkedHighlights(focusedNode = document.activeElement) {
+  if (mobileLayout.matches && previewEditingKey) {
+    // Keep only the chosen sample outlined while judging its live color.
+    updateHoverHighlights([]);
+    return;
+  }
   // Rendering may replace a hovered sample. Never retain its detached bindings.
   hoveredLinkedHost = getLiveLinkedHost(hoveredLinkedHost);
   const host = hoveredLinkedHost || getLiveLinkedHost(focusedNode);
@@ -754,8 +1342,8 @@ previewContent.addEventListener('mouseover', handleLinkedHoverStart);
 previewContent.addEventListener('mouseout', handleLinkedHoverEnd);
 previewContent.addEventListener('focusin', handleLinkedHoverStart);
 previewContent.addEventListener('focusout', handleLinkedHoverEnd);
-previewColorPicker.addEventListener('focusin', handleLinkedHoverStart);
-previewColorPicker.addEventListener('focusout', handleLinkedHoverEnd);
+previewColorEditor.addEventListener('focusin', handleLinkedHoverStart);
+previewColorEditor.addEventListener('focusout', handleLinkedHoverEnd);
 previewContent.addEventListener('click', handlePreviewEdit);
 previewContent.addEventListener('keydown', event => {
   if (event.repeat || (event.key !== 'Enter' && event.key !== ' ')) return;
@@ -777,7 +1365,8 @@ function saveState() {
 
 function savePrefs() {
   localStorage.setItem(PREFS_KEY, JSON.stringify({
-    previewVisible, mobilePanel, mode, globalLinked, linkedState, selectedDefaultId
+    previewVisible, mobilePanel, mode, globalLinked, linkedState, selectedDefaultId,
+    previewEditor: lastPreviewEdit
   }));
 }
 
@@ -984,7 +1573,7 @@ function setGlobalLinked(linked) {
   btnGlobalLink.classList.toggle('linked', globalLinked);
   btnGlobalLink.title = globalLinked ? 'All colors linked (light = dark)' : 'Colors independent';
   btnGlobalLink.setAttribute('aria-pressed', String(globalLinked));
-  btnGlobalLink.querySelector('.control-label').textContent = globalLinked ? 'Modes linked' : 'Modes separate';
+  btnGlobalLink.querySelector('.control-label').textContent = globalLinked ? 'Modes linked' : 'Modes unlinked';
   colorEntries.forEach(entry => updateLinkButton(entry.name));
   savePrefs();
 }
@@ -999,14 +1588,18 @@ function updateLinkButton(colorName) {
   btn.title = linked ? `Linked to ${otherMode}` : `Not linked to ${otherMode}`;
   btn.setAttribute('aria-pressed', String(linked));
   btn.setAttribute('aria-label', `${colorName}: link Light and Dark`);
-  btn.querySelector('.control-label').textContent = linked ? 'Linked' : 'Separate';
+  btn.querySelector('.control-label').textContent = linked ? 'Linked' : 'Unlinked';
 }
 
 // ── Editor UI ──────────────────────────────────────────────────────────────
 
-function buildEditor() {
-  previewEditingKey = null;
-  syncPreviewColorEditor();
+function buildEditor(keepPendingPreview = false) {
+  if (!keepPendingPreview) {
+    pendingPreviewEditor = null;
+    lastPreviewEdit = null;
+  }
+  closePreviewColorEditor(false, false);
+  previewEditTargetIndex = -1;
   editorContent.innerHTML = '';
 
   colorEntries.forEach(entry => {
@@ -1016,6 +1609,15 @@ function buildEditor() {
     const row = document.createElement('div');
     row.className = 'color-row';
     row.dataset.color = entry.name;
+    let beforeEditHex = hex;
+    row.addEventListener('focusin', event => {
+      if (!row.contains(event.relatedTarget)) beforeEditHex = rgbaToHex(theme[entry.name][modeKey()]);
+    });
+    row.addEventListener('focusout', event => {
+      if (row.contains(event.relatedTarget) || !theme?.[entry.name]?.[modeKey()]) return;
+      const editedHex = rgbaToHex(theme[entry.name][modeKey()]);
+      if (editedHex !== beforeEditHex) rememberRecentColors(beforeEditHex, editedHex);
+    });
 
     const label = document.createElement('span');
     label.className = 'color-label';
@@ -1055,7 +1657,7 @@ function buildEditor() {
     linkBtn.setAttribute('aria-pressed', String(isLinked(entry.name)));
     const linkLabel = document.createElement('span');
     linkLabel.className = 'control-label';
-    linkLabel.textContent = isLinked(entry.name) ? 'Linked' : 'Separate';
+    linkLabel.textContent = isLinked(entry.name) ? 'Linked' : 'Unlinked';
     linkBtn.appendChild(linkLabel);
 
     picker.addEventListener('input', (e) => {
@@ -1085,6 +1687,7 @@ function buildEditor() {
     row.append(label, picker, hexInput, alphaLabel, linkBtn);
     editorContent.appendChild(row);
   });
+  editorReady = true;
 }
 
 function applyColorChange(colorName, hex) {
@@ -1162,6 +1765,7 @@ function syncMobilePanel() {
 }
 
 function setMobilePanel(panel) {
+  if (previewEditingKey) closePreviewColorEditor(false);
   mobilePanel = panel === 'preview' && PREVIEW_ENABLED ? 'preview' : 'colors';
   if (mobilePanel === 'preview') {
     setPreviewVisible(true);
@@ -1322,9 +1926,11 @@ async function init() {
     setPreviewVisible(previewVisible);
     btnGlobalLink.classList.toggle('linked', globalLinked);
     btnGlobalLink.title = globalLinked ? 'All colors linked (light = dark)' : 'Colors independent';
-    buildEditor();
+    buildEditor(true);
     if (PREVIEW_ENABLED) await renderPreview();
   } catch (err) {
+    pendingPreviewEditor = null;
+    syncPreviewColorEditor();
     console.error('Failed to initialize editor:', err);
   }
 }

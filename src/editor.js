@@ -24,6 +24,7 @@ const linkedState = Object.assign({}, _savedPrefs?.linkedState);
 let selectedDefaultId = _savedPrefs?.selectedDefaultId || 0;
 let themeManifest = [];
 let activeThemeMeta = null;
+let previewEditingKey = null;
 
 // ── DOM References ─────────────────────────────────────────────────────────
 const editorContent = document.getElementById('editor-content');
@@ -36,11 +37,19 @@ const btnResetToggle = document.getElementById('btn-reset-toggle');
 const resetDropdown = document.getElementById('reset-dropdown');
 const btnImport = document.getElementById('btn-import');
 const btnExport = document.getElementById('btn-export');
+const exportDialog = document.getElementById('export-dialog');
+const exportForm = document.getElementById('export-form');
+const exportNameInput = document.getElementById('export-name');
+const btnExportCancel = document.getElementById('btn-export-cancel');
 const fileInput = document.getElementById('file-input');
 const btnPreviewToggle = document.getElementById('btn-preview-toggle');
 const previewPanel = document.querySelector('.preview-panel');
 const workspace = document.querySelector('.workspace');
 const previewContent = document.getElementById('preview-content');
+const previewColorEditor = document.getElementById('preview-color-editor');
+const previewColorName = document.getElementById('preview-color-name');
+const previewColorPicker = document.getElementById('preview-color-picker');
+const previewMobileHint = document.querySelector('.preview-mobile-hint');
 const btnMobileColors = document.getElementById('btn-mobile-colors');
 const btnMobilePreview = document.getElementById('btn-mobile-preview');
 const mobileLayout = window.matchMedia('(max-width: 700px)');
@@ -61,7 +70,7 @@ const PREVIEW_DETECTION_KEYS = {
   v08: ['backgroundColor', 'foregroundColor', 'bodyTextColor', 'buttonNormalTextColor']
 };
 
-const EXPORT_FILE_NAME = 'themeColors.pbcolors';
+let exportBaseName = 'themeColors';
 
 // ── Color Conversion ───────────────────────────────────────────────────────
 
@@ -160,7 +169,7 @@ function getPreviewTemplateFallback() {
           <span class="preview-meta-label">Live bindings</span>
           <strong>Editor changes apply instantly</strong>
           <span class="preview-help-desktop">Hover to see linked colors. Click a fill or text to edit its color.</span>
-          <span class="preview-help-mobile">Tap a fill or text to edit its color.</span>
+          <span class="preview-help-mobile">Tap a component to edit its color. If colors overlap, choose one.</span>
         </div>
       </div>
       <div class="preview-stage" data-preview-stage></div>
@@ -367,6 +376,8 @@ function getLinkedHoverHost(node) {
 function preparePreviewEditing() {
   const availableKeys = new Set(colorEntries.map(entry => entry.name));
   previewContent.querySelectorAll('[data-linked-keys]').forEach(block => {
+    // This wrapper lists unrelated keys; only its individual chips are editable.
+    if (block.matches('.preview-fallback')) return;
     // The first binding is the surface's editable color. Nested text has its own binding.
     const key = getLinkedKeys(block).find(key => availableKeys.has(key));
     if (!key) return;
@@ -385,29 +396,63 @@ function preparePreviewEditing() {
       block.setAttribute('aria-label', `Edit ${key} color`);
     }
   });
+  refreshLinkedHighlights();
+}
+
+function getEditorRow(key) {
+  return Array.from(editorContent.querySelectorAll('.color-row'))
+    .find(row => row.dataset.color === key);
+}
+
+function syncPreviewColorEditor() {
+  const color = previewEditingKey && theme?.[previewEditingKey]?.[modeKey()];
+  previewColorEditor.hidden = !color;
+  previewMobileHint.hidden = Boolean(color);
+  if (!color) {
+    previewEditingKey = null;
+    previewColorName.textContent = '';
+    delete previewColorPicker.dataset.linkedKeys;
+    return;
+  }
+  previewColorName.textContent = previewEditingKey;
+  previewColorPicker.value = rgbaToHex(color);
+  previewColorPicker.dataset.linkedKeys = previewEditingKey;
+  previewColorPicker.setAttribute('aria-label', `Edit ${previewEditingKey} color`);
 }
 
 function editPreviewColor(host) {
-  const key = host.dataset.previewEditKey;
-  if (!key) return;
+  const key = typeof host === 'string' ? host : host.dataset.previewEditKey;
+  if (!key || !theme?.[key]?.[modeKey()]) return;
 
-  const row = Array.from(editorContent.querySelectorAll('.color-row'))
-    .find(row => row.dataset.color === key);
-  const picker = row?.querySelector('.color-picker');
-  if (!picker || picker.disabled) return;
+  let picker;
+  if (mobileLayout.matches) {
+    // This control lives in the header so live preview updates cannot detach it.
+    previewEditingKey = key;
+    syncPreviewColorEditor();
+    picker = previewColorPicker;
+  } else {
+    const row = getEditorRow(key);
+    picker = row?.querySelector('.color-picker');
+    if (!picker || picker.disabled) return;
 
-  if (mobileLayout.matches) setMobilePanel('colors');
-
-  const viewport = editorContent.getBoundingClientRect();
-  const top = viewport.top + editorContent.clientTop;
-  const bounds = row.getBoundingClientRect();
-  if (bounds.top < top || bounds.bottom > top + editorContent.clientHeight) {
-    // Only move the editor pane. Finish scrolling before opening the native picker.
-    editorContent.scrollTop += bounds.top - top - (editorContent.clientHeight - bounds.height) / 2;
+    const viewport = editorContent.getBoundingClientRect();
+    const top = viewport.top + editorContent.clientTop;
+    const bounds = row.getBoundingClientRect();
+    if (bounds.top < top || bounds.bottom > top + editorContent.clientHeight) {
+      // Only move the editor pane. Finish scrolling before opening the native picker.
+      editorContent.scrollTop += bounds.top - top - (editorContent.clientHeight - bounds.height) / 2;
+    }
   }
 
+  hoveredLinkedHost = null;
   picker.focus({ preventScroll: true });
-  updateHoverHighlights([key]);
+  refreshLinkedHighlights(picker);
+  if (picker === previewColorPicker) {
+    // Lay out the newly revealed control before Safari anchors its native picker.
+    picker.getBoundingClientRect();
+    picker.click();
+    return;
+  }
   try {
     if (typeof picker.showPicker === 'function') {
       picker.showPicker();
@@ -419,11 +464,178 @@ function editPreviewColor(host) {
   picker.click();
 }
 
+previewColorPicker.addEventListener('input', event => {
+  if (!previewEditingKey || !theme?.[previewEditingKey]?.[modeKey()]) return;
+  applyColorChange(previewEditingKey, event.target.value);
+  refreshEditor();
+});
+
+function isCompactPreviewComponent(element) {
+  // Only these controls combine their nested labels into one editing target.
+  // Cards and scene containers may bind their own surface without owning text.
+  return element.matches('button, .preview-v09-filter-chip, .preview-v09-continue, .preview-v09-secondary-action, .preview-v09-new, .preview-v09-alpha-layer, .preview-banner, .preview-accent-rail');
+}
+
+function getLayeredPreviewComponent(host) {
+  if (!getLinkedKeys(host).length || host.matches('.preview-fallback')) return null;
+  const scene = host.closest('.preview-showcase, .preview-v09-scene, .preview-token-section');
+  let component = host;
+  while (component && previewContent.contains(component)) {
+    if (component === scene || (scene && !scene.contains(component))) break;
+    const keys = getLinkedKeys(component);
+    if (!keys.length) break;
+    if (isCompactPreviewComponent(component)) return component;
+    component = component.parentElement?.closest('[data-linked-keys]');
+  }
+  return host;
+}
+
+function getPreviewColorChoices(component) {
+  const keys = new Set();
+  const scene = component.closest('.preview-showcase, .preview-v09-scene, .preview-token-section');
+  let ancestor = component;
+  while (ancestor && previewContent.contains(ancestor)) {
+    // A fallback collection lists unrelated keys, unlike a scene's actual canvas.
+    if (ancestor.matches('.preview-fallback')) break;
+    if (ancestor.hasAttribute('data-linked-keys')) {
+      const bindings = getLinkedKeys(ancestor);
+      if (!bindings.length) break;
+      bindings.forEach(key => keys.add(key));
+    }
+    if (ancestor === scene) break;
+    ancestor = ancestor.parentElement;
+  }
+  const collect = element => {
+    for (const child of element.children) {
+      if (child.hasAttribute('data-linked-keys')) {
+        const bindings = getLinkedKeys(child);
+        // Do not turn illustrative artwork or native parts into color choices.
+        if (!bindings.length) continue;
+        bindings.forEach(key => keys.add(key));
+      }
+      collect(child);
+    }
+  };
+  // Tapping a surface also offers the colors of the content it contains.
+  // Precise text taps still start at that text, not the surrounding subtree.
+  collect(component);
+
+  const bindings = getLinkedKeys(component);
+  const role = key => {
+    if (component.matches('.preview-button')) {
+      if (bindings.includes(key)) {
+        if (/BackgroundColor$/i.test(key)) return 'Fill';
+        if (/BorderColor$/i.test(key)) return 'Border';
+      }
+      if (key === 'foregroundColor') return 'Card fill';
+      if (key === 'borderColor') return 'Card border';
+    }
+    if (component.matches('.preview-v09-filter-chip')) {
+      if (key === bindings[0]) return 'Fill';
+      if (key === 'text') return 'Text';
+      if (key === 'background') return 'Background';
+    }
+    if (component.matches('.preview-v09-continue, .preview-v09-secondary-action, .preview-v09-new')) {
+      if (key === bindings[0]) return 'Fill';
+      if (key === bindings[1]) return 'Text';
+    }
+    if (component.matches('.preview-v09-alpha-layer')) {
+      if (key === bindings[0]) return 'Overlay';
+      if (key === bindings[1]) return 'Background';
+    }
+    if (/text/i.test(key)) return 'Text';
+    if (key === 'border' || key === 'borderColor') return 'Border';
+    if (key === 'foreground' || key === 'foregroundColor') return 'Fill';
+    if (key === 'background' || key === 'backgroundColor') return 'Background';
+    return 'Color';
+  };
+  const roleOrder = ['Fill', 'Text', 'Border', 'Card fill', 'Card border', 'Overlay', 'Background', 'Color'];
+  return [...keys]
+    .filter(key => colorEntries.some(entry => entry.name === key))
+    .map(key => ({ key, role: role(key) }))
+    .sort((a, b) => roleOrder.indexOf(a.role) - roleOrder.indexOf(b.role));
+}
+
+function showPreviewColorChooser(host, choices) {
+  if (previewContent.querySelector('.preview-color-dialog')) return;
+  const previousFocus = document.activeElement;
+  const returnFocus = host.matches('[tabindex], button') ? host
+    : host.querySelector('[tabindex], button') || previousFocus;
+  const dialog = document.createElement('dialog');
+  dialog.className = 'preview-color-dialog';
+  dialog.setAttribute('aria-labelledby', 'preview-color-choice-title');
+  dialog.setAttribute('aria-describedby', 'preview-color-choice-description');
+  dialog.innerHTML = `
+    <h2 id="preview-color-choice-title">Choose a color</h2>
+    <p id="preview-color-choice-description">Which part of this component would you like to edit?</p>
+    <div class="preview-color-choices"></div>
+    <button type="button" class="btn preview-color-cancel">Cancel</button>`;
+
+  let selected = false;
+  const list = dialog.querySelector('.preview-color-choices');
+  choices.forEach(({ key, role }) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'preview-color-choice';
+    const swatch = document.createElement('span');
+    swatch.className = 'preview-color-choice-swatch';
+    swatch.setAttribute('aria-hidden', 'true');
+    const fill = document.createElement('span');
+    const entry = colorEntries.find(entry => entry.name === key);
+    const color = entry[modeKey()];
+    const solid = document.createElement('span');
+    solid.style.backgroundColor = rgbaToHex(color);
+    fill.style.backgroundColor = rgbaToCss(color);
+    swatch.append(solid, fill);
+    const label = document.createElement('span');
+    label.className = 'preview-color-choice-label';
+    const name = document.createElement('strong');
+    name.textContent = role;
+    const detail = document.createElement('span');
+    detail.textContent = color.alpha < 1
+      ? `${key} · ${Math.round(color.alpha * 100)}% opacity` : key;
+    label.append(name, detail);
+    button.append(swatch, label);
+    button.addEventListener('click', () => {
+      selected = true;
+      dialog.close();
+      dialog.remove();
+      // Keep picker activation in this user gesture, after the modal is gone.
+      editPreviewColor(key);
+    });
+    list.appendChild(button);
+  });
+  dialog.querySelector('.preview-color-cancel').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('click', event => {
+    if (event.target !== dialog) return;
+    const bounds = dialog.getBoundingClientRect();
+    if (event.clientX < bounds.left || event.clientX > bounds.right
+      || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
+  });
+  dialog.addEventListener('close', () => {
+    dialog.remove();
+    if (!selected) {
+      clearHoverHighlights();
+      if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+    }
+  });
+  previewContent.appendChild(dialog);
+  dialog.showModal();
+}
+
 function handlePreviewEdit(event) {
   const host = getLinkedHoverHost(event.target);
   // An empty binding intentionally stops clicks on illustrative artwork/native parts.
   if (!host || !previewContent.contains(host) || !host.dataset.previewEditKey) return;
   event.preventDefault();
+  if (mobileLayout.matches) {
+    const component = getLayeredPreviewComponent(host);
+    const choices = component ? getPreviewColorChoices(component) : [];
+    if (choices.length > 1) {
+      showPreviewColorChooser(host, choices);
+      return;
+    }
+  }
   editPreviewColor(host);
 }
 
@@ -492,34 +704,46 @@ function updateHoverHighlights(keys) {
   });
 }
 
+let hoveredLinkedHost = null;
+
+function getLiveLinkedHost(node) {
+  const host = getLinkedHoverHost(node);
+  return host?.isConnected && (editorContent.contains(host) || previewContent.contains(host) || host === previewColorPicker)
+    ? host : null;
+}
+
+function refreshLinkedHighlights(focusedNode = document.activeElement) {
+  // Rendering may replace a hovered sample. Never retain its detached bindings.
+  hoveredLinkedHost = getLiveLinkedHost(hoveredLinkedHost);
+  const host = hoveredLinkedHost || getLiveLinkedHost(focusedNode);
+  updateHoverHighlights(host ? getContextualLinkedKeys(host) : []);
+}
+
 function clearHoverHighlights() {
-  updateHoverHighlights([]);
+  hoveredLinkedHost = null;
+  refreshLinkedHighlights();
 }
 
 function handleLinkedHoverStart(event) {
-  const host = getLinkedHoverHost(event.target);
-  if (!host) return;
-
-  const related = normalizeHoverNode(event.relatedTarget);
-  if (related && host.contains(related)) return;
-
-  updateHoverHighlights(getContextualLinkedKeys(host));
+  if (event.type === 'focusin') {
+    // A new keyboard or picker focus takes over from any previous pointer target.
+    hoveredLinkedHost = null;
+    refreshLinkedHighlights(event.target);
+    return;
+  }
+  hoveredLinkedHost = getLiveLinkedHost(event.target);
+  refreshLinkedHighlights();
 }
 
 function handleLinkedHoverEnd(event) {
-  const host = getLinkedHoverHost(event.target);
-  if (!host) return;
-
-  const related = normalizeHoverNode(event.relatedTarget);
-  if (related && host.contains(related)) return;
-
-  const nextHost = getLinkedHoverHost(related);
-  if (nextHost) {
-    updateHoverHighlights(getContextualLinkedKeys(nextHost));
+  if (event.type === 'focusout') {
+    refreshLinkedHighlights(event.relatedTarget);
     return;
   }
-
-  clearHoverHighlights();
+  // An empty binding still counts as a pointer target and suppresses focus
+  // highlights while the pointer is over illustrative artwork/native parts.
+  hoveredLinkedHost = getLiveLinkedHost(event.relatedTarget);
+  refreshLinkedHighlights();
 }
 
 editorContent.addEventListener('mouseover', handleLinkedHoverStart);
@@ -530,6 +754,8 @@ previewContent.addEventListener('mouseover', handleLinkedHoverStart);
 previewContent.addEventListener('mouseout', handleLinkedHoverEnd);
 previewContent.addEventListener('focusin', handleLinkedHoverStart);
 previewContent.addEventListener('focusout', handleLinkedHoverEnd);
+previewColorPicker.addEventListener('focusin', handleLinkedHoverStart);
+previewColorPicker.addEventListener('focusout', handleLinkedHoverEnd);
 previewContent.addEventListener('click', handlePreviewEdit);
 previewContent.addEventListener('keydown', event => {
   if (event.repeat || (event.key !== 'Enter' && event.key !== ' ')) return;
@@ -655,6 +881,8 @@ function getInitialThemeMeta(saved) {
 
 function setActiveThemeMeta(meta, { persist = false } = {}) {
   activeThemeMeta = normalizeThemeMeta(meta);
+  exportBaseName = activeThemeMeta?.source === 'import' && activeThemeMeta.name
+    ? activeThemeMeta.name : 'themeColors';
   updateEditorTitle();
   if (persist) saveThemeMeta();
 }
@@ -762,7 +990,7 @@ function setGlobalLinked(linked) {
 }
 
 function updateLinkButton(colorName) {
-  const btn = document.querySelector(`.link-btn[data-color="${colorName}"]`);
+  const btn = getEditorRow(colorName)?.querySelector('.link-btn');
   if (!btn) return;
 
   const linked = isLinked(colorName);
@@ -777,6 +1005,8 @@ function updateLinkButton(colorName) {
 // ── Editor UI ──────────────────────────────────────────────────────────────
 
 function buildEditor() {
+  previewEditingKey = null;
+  syncPreviewColorEditor();
   editorContent.innerHTML = '';
 
   colorEntries.forEach(entry => {
@@ -868,13 +1098,14 @@ function applyColorChange(colorName, hex) {
   }
 
   colorEntries = detectColors(theme);
+  syncPreviewColorEditor();
   saveState();
   void renderPreview();
 }
 
 function refreshEditor() {
   colorEntries.forEach(entry => {
-    const row = document.querySelector(`.color-row[data-color="${entry.name}"]`);
+    const row = getEditorRow(entry.name);
     if (!row) return;
 
     const color = entry[modeKey()];
@@ -886,6 +1117,7 @@ function refreshEditor() {
 
     updateLinkButton(entry.name);
   });
+  syncPreviewColorEditor();
 }
 
 // ── Controls ───────────────────────────────────────────────────────────────
@@ -1008,7 +1240,15 @@ function handleImport(file) {
   reader.readAsText(file);
 }
 
-function exportTheme() {
+function openExportDialog() {
+  if (!theme) return;
+  exportNameInput.value = exportBaseName;
+  exportNameInput.setCustomValidity('');
+  exportDialog.showModal();
+  exportNameInput.select();
+}
+
+function exportTheme(filename) {
   if (!theme) return;
 
   const json = JSON.stringify(theme, null, 2);
@@ -1016,10 +1256,31 @@ function exportTheme() {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = EXPORT_FILE_NAME;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
   anchor.click();
-  URL.revokeObjectURL(url);
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+exportForm.addEventListener('submit', event => {
+  event.preventDefault();
+  const name = exportNameInput.value.trim().replace(/(?:\.pbcolors)+$/i, '').trim();
+  let error = '';
+  if (!name || /^\.+$/.test(name)) {
+    error = 'Enter a file name.';
+  } else if (/[<>:"/\\|?*\u0000-\u001f]/.test(name)) {
+    error = 'Use a file name without slashes or these characters: < > : " | ? *';
+  }
+  exportNameInput.setCustomValidity(error);
+  if (!exportNameInput.reportValidity()) return;
+
+  exportBaseName = name;
+  exportTheme(`${name}.pbcolors`);
+  exportDialog.close();
+});
+exportNameInput.addEventListener('input', () => exportNameInput.setCustomValidity(''));
+btnExportCancel.addEventListener('click', () => exportDialog.close());
 
 btnReset.addEventListener('click', resetToDefaults);
 btnImport.addEventListener('click', () => {
@@ -1031,7 +1292,7 @@ fileInput.addEventListener('change', (e) => {
     handleImport(e.target.files[0]);
   }
 });
-btnExport.addEventListener('click', exportTheme);
+btnExport.addEventListener('click', openExportDialog);
 
 // ── Initialization ─────────────────────────────────────────────────────────
 

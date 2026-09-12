@@ -51,12 +51,31 @@
       <div class="panel-header">
         <h2>Preview</h2>
         <span class="preview-mobile-hint">Tap a color to edit</span>
+        <label id="preview-color-editor" class="preview-color-editor" hidden>
+          <span id="preview-color-name"></span>
+          <input id="preview-color-picker" type="color" aria-label="Edit preview color">
+        </label>
       </div>
       <div id="preview-content" class="panel-body">
         <!-- Preview components will be loaded here -->
       </div>
     </section>
   </main>
+
+  <dialog id="export-dialog" class="export-dialog" aria-labelledby="export-title">
+    <form id="export-form">
+      <h2 id="export-title">Export theme</h2>
+      <label for="export-name">File name</label>
+      <div class="export-filename">
+        <input id="export-name" type="text" required autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="export-extension" autofocus>
+        <span id="export-extension">.pbcolors</span>
+      </div>
+      <div class="export-actions">
+        <button id="btn-export-cancel" class="btn" type="button">Cancel</button>
+        <button class="btn export-confirm" type="submit">Export</button>
+      </div>
+    </form>
+  </dialog>
 
   <script>
     (() => {

@@ -71,6 +71,87 @@ body {
   border-color: var(--ui-accent);
 }
 
+/* Export filename dialog */
+.export-dialog {
+  width: min(420px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  margin: auto;
+  padding: 24px;
+  overflow-y: auto;
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+
+.export-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.export-dialog h2 {
+  margin-bottom: 20px;
+  font-size: 18px;
+}
+
+.export-dialog label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.export-filename {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  background: var(--ui-input-bg);
+}
+
+.export-filename:focus-within {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+
+.export-filename input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 16px;
+}
+
+.export-filename span {
+  flex-shrink: 0;
+  padding-right: 10px;
+  color: var(--ui-text-muted);
+  font-size: 14px;
+}
+
+.export-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.export-actions .btn {
+  min-height: 44px;
+  min-width: 80px;
+}
+
+.export-confirm {
+  background: var(--ui-accent);
+  border-color: var(--ui-accent);
+  color: #fff;
+}
+
 /* Split Button (Reset dropdown) */
 .split-btn {
   position: relative;
@@ -220,7 +301,8 @@ body {
 
 .control-label,
 .mobile-view-switch,
-.preview-mobile-hint {
+.preview-mobile-hint,
+.preview-color-editor {
   display: none;
 }
 
@@ -372,12 +454,11 @@ body {
   box-shadow: inset 0 0 0 2px var(--linked-highlight, rgba(233, 69, 96, 0.4));
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.16s ease;
+  transition: none;
   z-index: -1;
 }
 
-.color-row.linked-hover::before,
-.color-row:focus-within::before {
+.color-row.linked-hover::before {
   opacity: 1;
 }
 
@@ -573,11 +654,39 @@ body {
     flex-direction: column;
   }
 
-  .preview-mobile-hint {
+  .preview-mobile-hint:not([hidden]) {
     display: inline;
     color: var(--ui-text-muted);
     font-size: 12px;
     line-height: 1.4;
+  }
+
+  .preview-color-editor:not([hidden]) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    max-width: calc(100% - 90px);
+    margin-left: auto;
+  }
+
+  #preview-color-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+  }
+
+  #preview-color-picker {
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    padding: 2px;
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    background: var(--ui-input-bg);
+    cursor: pointer;
   }
 
   .editor-panel {

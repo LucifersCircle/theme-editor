@@ -46,8 +46,7 @@ body {
 }
 
 /* These wrappers only own the mobile chrome's collapse animation. */
-.preview-edit-chrome,
-.preview-edit-chrome > div {
+.preview-edit-chrome {
   display: contents;
 }
 
@@ -630,28 +629,24 @@ body {
   }
 
   .preview-edit-chrome {
-    display: grid;
+    display: block;
     flex: none;
-    grid-template-rows: 1fr;
+    min-height: 0;
+    height: var(--preview-edit-chrome-height, auto);
     opacity: 1;
     transform: none;
-    transition: grid-template-rows var(--preview-editor-duration) var(--preview-editor-easing),
+    transition: height var(--preview-editor-duration) var(--preview-editor-easing),
       opacity var(--preview-editor-duration) ease-out,
       transform var(--preview-editor-duration) var(--preview-editor-easing);
   }
 
-  .preview-edit-chrome > div {
-    display: block;
-    min-height: 0;
-  }
-
-  .preview-editor-transitioning .preview-edit-chrome > div,
-  .preview-editing .preview-edit-chrome > div {
+  .preview-editor-transitioning .preview-edit-chrome,
+  .preview-editing .preview-edit-chrome {
     overflow: clip;
   }
 
   .preview-editing .preview-edit-chrome {
-    grid-template-rows: 0fr;
+    height: 0;
     opacity: 0;
     transform: translateY(-8px);
     pointer-events: none;

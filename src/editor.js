@@ -728,6 +728,13 @@ function updatePreviewEditorHeight() {
   }
 }
 
+function measurePreviewEditChrome() {
+  if (!mobileLayout.matches) return;
+  previewEditChrome.forEach(chrome => {
+    chrome.style.setProperty('--preview-edit-chrome-height', `${chrome.scrollHeight}px`);
+  });
+}
+
 // CSS owns interpolation; the latest transition alone may hide the dock or
 // restore interaction. Reversals cancel/re-target CSS transitions without timers.
 function syncPreviewEditorPresentation(editing) {
@@ -741,8 +748,10 @@ function syncPreviewEditorPresentation(editing) {
   previewColorEditor.inert = true;
   if (editing) previewColorEditor.hidden = false;
   updatePreviewEditorHeight();
-  // Establish the offscreen starting style before removing/adding the open state.
-  void previewColorEditor.offsetHeight;
+  // Give height a concrete endpoint before changing the editing class. This
+  // avoids the intrinsic minimum-size behavior of the former 0fr grid trick.
+  measurePreviewEditChrome();
+  void document.body.offsetHeight;
   document.body.classList.add('preview-editor-transitioning');
   document.body.classList.toggle('preview-editing', collapsed);
   const elements = [...previewEditChrome, previewColorEditor, previewPanel];
@@ -752,6 +761,9 @@ function syncPreviewEditorPresentation(editing) {
     previewColorEditor.hidden = !editing;
     previewColorEditor.inert = !editing;
     previewEditChrome.forEach(chrome => { chrome.inert = collapsed; });
+    if (!collapsed) {
+      previewEditChrome.forEach(chrome => chrome.style.removeProperty('--preview-edit-chrome-height'));
+    }
     document.body.classList.remove('preview-editor-transitioning');
     return true;
   });
@@ -883,6 +895,12 @@ function resizePreviewColorEditor() {
   previewEditViewportWidth = window.innerWidth;
   updatePreviewEditViewport();
   updatePreviewEditorHeight();
+  if (!document.body.classList.contains('preview-editor-transitioning')) {
+    measurePreviewEditChrome();
+    if (!document.body.classList.contains('preview-editing')) {
+      previewEditChrome.forEach(chrome => chrome.style.removeProperty('--preview-edit-chrome-height'));
+    }
+  }
   const editingText = document.activeElement === previewColorHex;
   if (previewEditingKey && mobileLayout.matches && (widthChanged || editingText)) {
     requestAnimationFrame(() => {
@@ -918,7 +936,10 @@ function closePreviewColorEditor(restoreFocus = true, rememberColor = true) {
     const focusTarget = target.matches('[tabindex], button') ? target : target.querySelector('[tabindex], button');
     focusTarget?.focus({ preventScroll: true });
     scrollPreviewEditTargetIntoView(previewEditScrollBehavior(), target, false);
-    clearHoverHighlights();
+    // Preserve focus without making its hover-linked outline look like the
+    // persistent selected-key highlight that just closed.
+    linkedHighlightsSuppressed = true;
+    clearHoverHighlights(null);
   });
   clearHoverHighlights();
   savePrefs();
@@ -943,6 +964,7 @@ function editPreviewColor(host, sourceHost = host) {
     previewContent.querySelector('.preview-edit-target')?.classList.remove('preview-edit-target');
     getPreviewEditTarget()?.classList.add('preview-edit-target');
     hoveredLinkedHost = null;
+    linkedHighlightsSuppressed = false;
     refreshLinkedHighlights(previewColorField);
     transition.then(current => {
       if (!current || previewEditingKey !== key) return;
@@ -1115,6 +1137,11 @@ btnPreviewColorUndo.addEventListener('click', () => {
   void renderPreview();
 });
 document.addEventListener('keydown', event => {
+  if (linkedHighlightsSuppressed && !previewEditingKey) {
+    linkedHighlightsSuppressed = false;
+    hoveredLinkedHost = null;
+    refreshLinkedHighlights(event.target);
+  }
   if (event.key === 'Escape' && previewEditingKey && !document.querySelector('.preview-color-dialog, .preview-history-remove-dialog')) closePreviewColorEditor();
 });
 mobileLayout.addEventListener('change', () => {
@@ -1315,7 +1342,7 @@ function getContextualLinkedKeys(host) {
   return keys;
 }
 
-function updateHoverHighlights(keys) {
+function makeLinkedHighlightColors(keys) {
   const palette = [
     ['#ff7898', 'rgba(255, 120, 152, 0.16)'],
     ['#55d9ed', 'rgba(85, 217, 237, 0.16)'],
@@ -1323,26 +1350,31 @@ function updateHoverHighlights(keys) {
     ['#bca0ff', 'rgba(188, 160, 255, 0.16)'],
     ['#77e4b1', 'rgba(119, 228, 177, 0.16)']
   ];
-  const colors = new Map([...new Set(keys)].map((key, index) => [key, palette[index % palette.length]]));
-  const highlight = (element, key) => {
-    const color = colors.get(key);
-    element.classList.toggle('linked-hover', Boolean(color));
-    if (color) {
-      element.style.setProperty('--linked-highlight', color[0]);
-      element.style.setProperty('--linked-highlight-soft', color[1]);
-    } else {
-      element.style.removeProperty('--linked-highlight');
-      element.style.removeProperty('--linked-highlight-soft');
-    }
-  };
+  return new Map([...new Set(keys)].map((key, index) => [key, palette[index % palette.length]]));
+}
+
+function setLinkedHighlight(element, key, colors) {
+  const color = colors.get(key);
+  element.classList.toggle('linked-hover', Boolean(color));
+  if (color) {
+    element.style.setProperty('--linked-highlight', color[0]);
+    element.style.setProperty('--linked-highlight-soft', color[1]);
+  } else {
+    element.style.removeProperty('--linked-highlight');
+    element.style.removeProperty('--linked-highlight-soft');
+  }
+}
+
+function updateHoverHighlights(keys) {
+  const colors = makeLinkedHighlightColors(keys);
 
   editorContent.querySelectorAll('.color-row[data-color]').forEach(row => {
-    highlight(row, row.dataset.color);
+    setLinkedHighlight(row, row.dataset.color, colors);
   });
 
   previewContent.querySelectorAll('[data-linked-keys]').forEach(block => {
     if (block.matches('.preview-fallback')) {
-      highlight(block, null);
+      setLinkedHighlight(block, null, colors);
       return;
     }
     const bindings = getLinkedKeys(block);
@@ -1354,11 +1386,62 @@ function updateHoverHighlights(keys) {
         .map(child => getLinkedKeys(child)[0]));
       owner = bindings.find(key => colors.has(key) && !childBindings.has(key));
     }
-    highlight(block, owner);
+    setLinkedHighlight(block, owner, colors);
+  });
+}
+
+function hasEmptyBindingBetween(element, ancestor) {
+  let current = element.parentElement;
+  while (current && current !== ancestor) {
+    if (current.hasAttribute('data-linked-keys') && getLinkedKeys(current).length === 0) return true;
+    current = current.parentElement;
+  }
+  return false;
+}
+
+function hasSelectedDescendant(block, key, primaryOnly) {
+  return Array.from(block.querySelectorAll('[data-linked-keys]')).some(descendant => {
+    if (descendant.matches('.preview-fallback') || hasEmptyBindingBetween(descendant, block)) return false;
+    const bindings = getLinkedKeys(descendant);
+    return primaryOnly ? bindings[0] === key : bindings.includes(key);
+  });
+}
+
+function hasSelectedPrimaryAncestor(block, key) {
+  let ancestor = block.parentElement?.closest('[data-linked-keys]');
+  while (ancestor && previewContent.contains(ancestor)) {
+    const bindings = getLinkedKeys(ancestor);
+    if (!bindings.length) break;
+    if (!ancestor.matches('.preview-fallback') && bindings[0] === key) return true;
+    ancestor = ancestor.parentElement?.closest('[data-linked-keys]');
+  }
+  return false;
+}
+
+function ownsSelectedPreviewKey(block, key) {
+  if (block.matches('.preview-fallback') || hasEmptyBindingBetween(block, previewContent)) return false;
+  const bindings = getLinkedKeys(block);
+  if (!bindings.includes(key)) return false;
+
+  // The first binding is the element's own visible color. A deepest primary
+  // binding wins; a later binding is only an owner when no ancestor or child
+  // provides a more specific element for that color.
+  if (bindings[0] === key) return !hasSelectedDescendant(block, key, true);
+  return !hasSelectedPrimaryAncestor(block, key) && !hasSelectedDescendant(block, key, false);
+}
+
+function updateSelectedKeyHighlights(key) {
+  const colors = makeLinkedHighlightColors([key]);
+  editorContent.querySelectorAll('.color-row[data-color]').forEach(row => {
+    setLinkedHighlight(row, null, colors);
+  });
+  previewContent.querySelectorAll('[data-linked-keys]').forEach(block => {
+    setLinkedHighlight(block, ownsSelectedPreviewKey(block, key) ? key : null, colors);
   });
 }
 
 let hoveredLinkedHost = null;
+let linkedHighlightsSuppressed = false;
 
 function getLiveLinkedHost(node) {
   const host = getLinkedHoverHost(node);
@@ -1368,9 +1451,11 @@ function getLiveLinkedHost(node) {
 
 function refreshLinkedHighlights(focusedNode = document.activeElement) {
   if (mobileLayout.matches && previewEditingKey) {
-    // Persist the selected key, using the same nested-binding ownership rules
-    // as hover. The exact tapped sample retains its separate target outline.
-    updateHoverHighlights([previewEditingKey]);
+    updateSelectedKeyHighlights(previewEditingKey);
+    return;
+  }
+  if (linkedHighlightsSuppressed) {
+    updateHoverHighlights([]);
     return;
   }
   // Rendering may replace a hovered sample. Never retain its detached bindings.
@@ -1379,18 +1464,26 @@ function refreshLinkedHighlights(focusedNode = document.activeElement) {
   updateHoverHighlights(host ? getContextualLinkedKeys(host) : []);
 }
 
-function clearHoverHighlights() {
+function clearHoverHighlights(focusedNode = document.activeElement) {
   hoveredLinkedHost = null;
-  refreshLinkedHighlights();
+  refreshLinkedHighlights(focusedNode);
 }
 
 function handleLinkedHoverStart(event) {
   if (event.type === 'focusin') {
     // A new keyboard or picker focus takes over from any previous pointer target.
+    linkedHighlightsSuppressed = false;
     hoveredLinkedHost = null;
     refreshLinkedHighlights(event.target);
     return;
   }
+  hoveredLinkedHost = getLiveLinkedHost(event.target);
+  refreshLinkedHighlights();
+}
+
+function resumeLinkedHighlightsFromPointer(event) {
+  if (!linkedHighlightsSuppressed) return;
+  linkedHighlightsSuppressed = false;
   hoveredLinkedHost = getLiveLinkedHost(event.target);
   refreshLinkedHighlights();
 }
@@ -1414,6 +1507,10 @@ previewContent.addEventListener('mouseover', handleLinkedHoverStart);
 previewContent.addEventListener('mouseout', handleLinkedHoverEnd);
 previewContent.addEventListener('focusin', handleLinkedHoverStart);
 previewContent.addEventListener('focusout', handleLinkedHoverEnd);
+editorContent.addEventListener('pointerdown', resumeLinkedHighlightsFromPointer, { capture: true, passive: true });
+editorContent.addEventListener('pointermove', resumeLinkedHighlightsFromPointer, { passive: true });
+previewContent.addEventListener('pointerdown', resumeLinkedHighlightsFromPointer, { capture: true, passive: true });
+previewContent.addEventListener('pointermove', resumeLinkedHighlightsFromPointer, { passive: true });
 previewColorEditor.addEventListener('focusin', handleLinkedHoverStart);
 previewColorEditor.addEventListener('focusout', handleLinkedHoverEnd);
 previewContent.addEventListener('click', handlePreviewEdit);

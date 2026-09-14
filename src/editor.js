@@ -728,10 +728,23 @@ function updatePreviewEditorHeight() {
   }
 }
 
+function updatePreviewEditChromeOffsets() {
+  if (!mobileLayout.matches) return;
+  let top = 0;
+  previewEditChrome.forEach(chrome => {
+    chrome.style.setProperty('--preview-edit-chrome-top', `${top}px`);
+    top += chrome.scrollHeight;
+  });
+}
+
 function measurePreviewEditChrome() {
   if (!mobileLayout.matches) return;
+  let top = 0;
   previewEditChrome.forEach(chrome => {
-    chrome.style.setProperty('--preview-edit-chrome-height', `${chrome.scrollHeight}px`);
+    const height = chrome.scrollHeight;
+    chrome.style.setProperty('--preview-edit-chrome-top', `${top}px`);
+    chrome.style.setProperty('--preview-edit-chrome-height', `${height}px`);
+    top += height;
   });
 }
 
@@ -771,6 +784,12 @@ function syncPreviewEditorPresentation(editing) {
 }
 
 new ResizeObserver(updatePreviewEditorHeight).observe(previewColorEditor);
+const previewEditChromeObserver = new ResizeObserver(() => {
+  if (!document.body.classList.contains('preview-editor-transitioning')) {
+    updatePreviewEditChromeOffsets();
+  }
+});
+previewEditChrome.forEach(chrome => previewEditChromeObserver.observe(chrome));
 
 function syncPreviewColorEditor() {
   const color = previewEditingKey && theme?.[previewEditingKey]?.[modeKey()];
@@ -1931,6 +1950,7 @@ function syncMobilePanel() {
   btnMobileColors.setAttribute('aria-pressed', String(mobilePanel === 'colors'));
   btnMobilePreview.setAttribute('aria-pressed', String(mobilePanel === 'preview'));
   btnMobilePreview.disabled = !PREVIEW_ENABLED;
+  updatePreviewEditChromeOffsets();
 }
 
 const mobilePanelScroll = { colors: 0, preview: 0 };

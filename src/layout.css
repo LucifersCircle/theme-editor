@@ -45,7 +45,7 @@ body {
   border: 0;
 }
 
-/* These wrappers only own the mobile chrome's collapse animation. */
+/* Mobile uses these wrappers for its sticky stack and edit transition. */
 .preview-edit-chrome {
   display: contents;
 }
@@ -630,14 +630,32 @@ body {
 
   .preview-edit-chrome {
     display: block;
+    position: sticky;
+    z-index: 10;
+    top: var(--preview-edit-chrome-top, 0px);
+    align-self: stretch;
     flex: none;
+    width: 100%;
     min-height: 0;
     height: var(--preview-edit-chrome-height, auto);
+    background: var(--ui-surface);
     opacity: 1;
     transform: none;
     transition: height var(--preview-editor-duration) var(--preview-editor-easing),
       opacity var(--preview-editor-duration) ease-out,
       transform var(--preview-editor-duration) var(--preview-editor-easing);
+  }
+
+  body > .preview-edit-chrome {
+    z-index: 13;
+  }
+
+  .editor-panel > .preview-edit-chrome {
+    z-index: 12;
+  }
+
+  .preview-panel > .preview-edit-chrome {
+    z-index: 11;
   }
 
   .preview-editor-transitioning .preview-edit-chrome,
@@ -1243,7 +1261,7 @@ body {
   }
 
   .workspace[data-mobile-panel="preview"] .editor-panel {
-    flex: 0 0 auto;
+    display: contents;
   }
 
   .workspace[data-mobile-panel="preview"] #editor-title {

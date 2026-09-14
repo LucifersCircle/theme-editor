@@ -748,6 +748,17 @@ function measurePreviewEditChrome() {
   });
 }
 
+function preservePreviewScrollAnchor(change) {
+  if (!mobileLayout.matches || mobilePanel !== 'preview' || !previewContent.getClientRects().length) {
+    change();
+    return;
+  }
+  const before = previewContent.getBoundingClientRect().top;
+  change();
+  const delta = previewContent.getBoundingClientRect().top - before;
+  if (Math.abs(delta) > 0.5) window.scrollBy(0, delta);
+}
+
 // CSS owns interpolation; the latest transition alone may hide the dock or
 // restore interaction. Reversals cancel/re-target CSS transitions without timers.
 function syncPreviewEditorPresentation(editing) {
@@ -764,8 +775,10 @@ function syncPreviewEditorPresentation(editing) {
   // Give height a concrete endpoint before changing the editing class. This
   // avoids the intrinsic minimum-size behavior of the former 0fr grid trick.
   measurePreviewEditChrome();
+  // Restoring the sticky stack changes document geometry. Offset that change
+  // before paint so the preview beneath it stays at the same viewport point.
+  preservePreviewScrollAnchor(() => document.body.classList.add('preview-editor-transitioning'));
   void document.body.offsetHeight;
-  document.body.classList.add('preview-editor-transitioning');
   document.body.classList.toggle('preview-editing', collapsed);
   const elements = [...previewEditChrome, previewColorEditor, previewPanel];
   const animations = elements.flatMap(element => element.getAnimations());
@@ -774,10 +787,20 @@ function syncPreviewEditorPresentation(editing) {
     previewColorEditor.hidden = !editing;
     previewColorEditor.inert = !editing;
     previewEditChrome.forEach(chrome => { chrome.inert = collapsed; });
-    if (!collapsed) {
-      previewEditChrome.forEach(chrome => chrome.style.removeProperty('--preview-edit-chrome-height'));
+    if (collapsed) {
+      const chromeHeight = previewEditChrome.reduce((height, chrome) => height + chrome.scrollHeight, 0);
+      const retainedHeight = Math.max(0, chromeHeight - Math.max(0, window.scrollY));
+      document.body.style.setProperty('--preview-edit-anchor-space', `${retainedHeight}px`);
     }
-    document.body.classList.remove('preview-editor-transitioning');
+    // Finalize the flow height atomically and retain the current preview point
+    // instead of letting the page move beneath the visual transition.
+    preservePreviewScrollAnchor(() => {
+      if (!collapsed) {
+        previewEditChrome.forEach(chrome => chrome.style.removeProperty('--preview-edit-chrome-height'));
+        document.body.style.removeProperty('--preview-edit-anchor-space');
+      }
+      document.body.classList.remove('preview-editor-transitioning');
+    });
     return true;
   });
   return previewEditorTransition;
@@ -894,9 +917,28 @@ function scrollPreviewEditTargetIntoView(behavior = 'auto', target = getPreviewE
     ? Math.min(viewportBottom, previewColorEditor.getBoundingClientRect().top) : viewportBottom;
   const availableHeight = bottom - viewportTop;
   const bounds = target.getBoundingClientRect();
-  if (!center && bounds.top >= viewportTop + 12 && bounds.bottom <= bottom - 12) return;
+  if (!center) {
+    if (bounds.top < viewportTop + 12) {
+      window.scrollBy({ top: bounds.top - viewportTop - 12, behavior });
+    } else if (bounds.bottom > bottom - 12) {
+      window.scrollBy({ top: bounds.bottom - bottom + 12, behavior });
+    }
+    return;
+  }
   const offset = bounds.height > availableHeight - 24 ? 12 : (availableHeight - bounds.height) / 2;
   window.scrollBy({ top: bounds.top - viewportTop - offset, behavior });
+}
+
+function isPreviewTargetVisible(target) {
+  if (!target || !mobileLayout.matches) return false;
+  const viewportTop = window.visualViewport?.offsetTop || 0;
+  const viewportBottom = viewportTop + (window.visualViewport?.height || window.innerHeight);
+  const chromeBottom = previewEditChrome.reduce((bottom, chrome) => {
+    const bounds = chrome.getBoundingClientRect();
+    return Math.max(bottom, bounds.height ? bounds.bottom : viewportTop);
+  }, viewportTop);
+  const bounds = target.getBoundingClientRect();
+  return bounds.top >= chromeBottom + 12 && bounds.bottom <= viewportBottom - 12;
 }
 
 function previewEditScrollBehavior() {
@@ -951,10 +993,11 @@ function closePreviewColorEditor(restoreFocus = true, rememberColor = true) {
   const transition = syncPreviewColorEditor();
   previewContent.querySelector('.preview-edit-target')?.classList.remove('preview-edit-target');
   transition.then(current => {
-    if (!current || previewEditingKey || !restoreFocus || !target?.isConnected) return;
-    const focusTarget = target.matches('[tabindex], button') ? target : target.querySelector('[tabindex], button');
-    focusTarget?.focus({ preventScroll: true });
-    scrollPreviewEditTargetIntoView(previewEditScrollBehavior(), target, false);
+    if (!current || previewEditingKey) return;
+    if (restoreFocus && target?.isConnected && isPreviewTargetVisible(target)) {
+      const focusTarget = target.matches('[tabindex], button') ? target : target.querySelector('[tabindex], button');
+      focusTarget?.focus({ preventScroll: true });
+    }
     // Preserve focus without making its hover-linked outline look like the
     // persistent selected-key highlight that just closed.
     linkedHighlightsSuppressed = true;
@@ -988,7 +1031,7 @@ function editPreviewColor(host, sourceHost = host) {
     transition.then(current => {
       if (!current || previewEditingKey !== key) return;
       previewColorField.focus({ preventScroll: true });
-      scrollPreviewEditTargetIntoView(previewEditScrollBehavior());
+      scrollPreviewEditTargetIntoView(previewEditScrollBehavior(), getPreviewEditTarget(), false);
     });
     savePrefs();
     return;
@@ -1257,7 +1300,25 @@ function getPreviewColorChoices(component) {
     .sort((a, b) => roleOrder.indexOf(a.role) - roleOrder.indexOf(b.role));
 }
 
-function showPreviewColorChooser(host, choices) {
+function getSuggestedPreviewColorKey(target, choices) {
+  const candidates = new Set(choices.map(choice => choice.key));
+  let element = normalizeHoverNode(target);
+  while (element && previewContent.contains(element)) {
+    if (element.matches('.preview-fallback')) break;
+    if (element.hasAttribute('data-linked-keys')) {
+      const bindings = getLinkedKeys(element);
+      if (!bindings.length) break;
+      const owned = bindings.find(key => candidates.has(key) && ownsSelectedPreviewKey(element, key));
+      if (owned) return owned;
+      const bound = bindings.find(key => candidates.has(key));
+      if (bound) return bound;
+    }
+    element = element.parentElement;
+  }
+  return choices[0]?.key || null;
+}
+
+function showPreviewColorChooser(host, choices, suggestedKey) {
   if (previewContent.querySelector('.preview-color-dialog')) return;
   const previousFocus = document.activeElement;
   const returnFocus = host.matches('[tabindex], button') ? host
@@ -1273,11 +1334,16 @@ function showPreviewColorChooser(host, choices) {
     <button type="button" class="btn preview-color-cancel">Cancel</button>`;
 
   let selected = false;
+  let suggestedButton = null;
   const list = dialog.querySelector('.preview-color-choices');
   choices.forEach(({ key, role }) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'preview-color-choice';
+    if (key === suggestedKey) {
+      button.classList.add('preview-color-choice-suggested');
+      suggestedButton = button;
+    }
     const swatch = document.createElement('span');
     swatch.className = 'preview-color-choice-swatch';
     swatch.setAttribute('aria-hidden', 'true');
@@ -1295,6 +1361,7 @@ function showPreviewColorChooser(host, choices) {
     const detail = document.createElement('span');
     detail.textContent = color.alpha < 1
       ? `${key} · ${Math.round(color.alpha * 100)}% opacity` : key;
+    button.setAttribute('aria-label', `${role}: ${detail.textContent}${key === suggestedKey ? ' (suggested)' : ''}`);
     label.append(name, detail);
     button.append(swatch, label);
     button.addEventListener('click', () => {
@@ -1321,6 +1388,7 @@ function showPreviewColorChooser(host, choices) {
   });
   previewContent.appendChild(dialog);
   dialog.showModal();
+  (suggestedButton || list.querySelector('.preview-color-choice'))?.focus({ preventScroll: true });
 }
 
 function handlePreviewEdit(event) {
@@ -1332,7 +1400,7 @@ function handlePreviewEdit(event) {
     const component = getLayeredPreviewComponent(host);
     const choices = component ? getPreviewColorChoices(component) : [];
     if (choices.length > 1) {
-      showPreviewColorChooser(host, choices);
+      showPreviewColorChooser(host, choices, getSuggestedPreviewColorKey(event.target, choices));
       return;
     }
   }

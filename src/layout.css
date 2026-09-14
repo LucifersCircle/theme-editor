@@ -641,8 +641,7 @@ body {
     background: var(--ui-surface);
     opacity: 1;
     transform: none;
-    transition: height var(--preview-editor-duration) var(--preview-editor-easing),
-      opacity var(--preview-editor-duration) ease-out,
+    transition: opacity var(--preview-editor-duration) ease-out,
       transform var(--preview-editor-duration) var(--preview-editor-easing);
   }
 
@@ -663,8 +662,15 @@ body {
     overflow: clip;
   }
 
-  .preview-editing .preview-edit-chrome {
+  .preview-editing:not(.preview-editor-transitioning) .preview-edit-chrome {
     height: 0;
+  }
+
+  .preview-editing:not(.preview-editor-transitioning) .workspace[data-mobile-panel="preview"] {
+    padding-top: var(--preview-edit-anchor-space, 0px);
+  }
+
+  .preview-editing .preview-edit-chrome {
     opacity: 0;
     transform: translateY(-8px);
     pointer-events: none;

@@ -426,6 +426,11 @@
   outline-offset: 1px;
 }
 
+.preview-color-choice-suggested {
+  border-color: var(--ui-accent);
+  background: rgba(233, 69, 96, 0.12);
+}
+
 .preview-color-choice-swatch {
   display: flex;
   width: 34px;

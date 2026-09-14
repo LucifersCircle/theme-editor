@@ -45,6 +45,12 @@ body {
   border: 0;
 }
 
+/* These wrappers only own the mobile chrome's collapse animation. */
+.preview-edit-chrome,
+.preview-edit-chrome > div {
+  display: contents;
+}
+
 /* Toolbar */
 .toolbar {
   display: flex;
@@ -601,6 +607,56 @@ body {
 
 /* Phones use one full-width panel at a time. */
 @media (max-width: 700px), (pointer: coarse) and (max-height: 500px) {
+  /* Let Safari's document scroll view own the active panel, including editing. */
+  html, body {
+    height: auto;
+    min-height: 100%;
+  }
+
+  body {
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: visible;
+    overflow-anchor: none;
+    --preview-editor-duration: 220ms;
+    --preview-editor-easing: cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
+  .workspace,
+  .panel,
+  .panel-body {
+    flex: none;
+    overflow: visible;
+  }
+
+  .preview-edit-chrome {
+    display: grid;
+    flex: none;
+    grid-template-rows: 1fr;
+    opacity: 1;
+    transform: none;
+    transition: grid-template-rows var(--preview-editor-duration) var(--preview-editor-easing),
+      opacity var(--preview-editor-duration) ease-out,
+      transform var(--preview-editor-duration) var(--preview-editor-easing);
+  }
+
+  .preview-edit-chrome > div {
+    display: block;
+    min-height: 0;
+  }
+
+  .preview-editor-transitioning .preview-edit-chrome > div,
+  .preview-editing .preview-edit-chrome > div {
+    overflow: clip;
+  }
+
+  .preview-editing .preview-edit-chrome {
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transform: translateY(-8px);
+    pointer-events: none;
+  }
+
   .toolbar {
     gap: 6px;
     padding: max(6px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 6px max(12px, env(safe-area-inset-left));
@@ -740,7 +796,15 @@ body {
 
   .preview-color-editor:not([hidden]) {
     display: flex;
-    flex: 0 0 auto;
+    position: fixed;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    bottom: var(--preview-edit-viewport-bottom, 0px);
+    transform: translateY(100%);
+    opacity: 0;
+    transition: transform var(--preview-editor-duration) var(--preview-editor-easing),
+      opacity var(--preview-editor-duration) ease-out;
     flex-direction: column;
     gap: 4px;
     min-width: 0;
@@ -1130,7 +1194,6 @@ body {
 
   .panel-body {
     padding: 8px max(14px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
-    overscroll-behavior-y: contain;
     scroll-padding-block: 12px;
   }
 
@@ -1207,10 +1270,15 @@ body {
 
   .workspace[data-mobile-panel="preview"] .preview-panel {
     display: flex;
-    flex: 1;
+    flex: none;
     opacity: 1;
     pointer-events: auto;
+    padding-bottom: 0;
     transition: none;
+  }
+
+  .preview-editor-transitioning .workspace[data-mobile-panel="preview"] .preview-panel {
+    transition: padding-bottom var(--preview-editor-duration) var(--preview-editor-easing);
   }
 
   .workspace[data-mobile-panel="preview"] .preview-panel .panel-header {
@@ -1221,23 +1289,16 @@ body {
     display: block;
   }
 
-  body.preview-editing {
-    height: var(--preview-edit-viewport-height, 100dvh);
+  .preview-editing .workspace[data-mobile-panel="preview"] .preview-panel {
+    padding-bottom: calc(var(--preview-editor-height, 0px) + var(--preview-edit-viewport-bottom, 0px));
   }
 
-  .preview-editing .toolbar,
-  .preview-editing .mobile-view-switch,
-  .preview-editing .editor-panel,
-  .preview-editing .workspace[data-mobile-panel="preview"] .preview-panel > .panel-header {
-    display: none;
+  .preview-editing .preview-color-editor:not([hidden]) {
+    transform: translateY(0);
+    opacity: 1;
   }
 
-  .preview-editing #preview-content {
-    flex: 1;
-    min-height: 0;
-  }
-
-  body.preview-editing .preview-edit-target {
+  body.preview-editing #preview-content .preview-edit-target {
     outline: 2px solid #55d9ed;
     outline-offset: 3px;
   }
@@ -1308,6 +1369,9 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .preview-panel,
+  .preview-edit-chrome,
+  .preview-color-editor:not([hidden]),
+  .preview-editor-transitioning .workspace[data-mobile-panel="preview"] .preview-panel,
   .btn,
   .split-dropdown-item,
   .global-link-btn,

@@ -82,6 +82,11 @@ const btnPreviewFavorite = document.getElementById('btn-preview-favorite');
 const btnMobileColors = document.getElementById('btn-mobile-colors');
 const btnMobilePreview = document.getElementById('btn-mobile-preview');
 const mobileLayout = window.matchMedia('(max-width: 700px), (pointer: coarse) and (max-height: 500px)');
+const previewEditChrome = Array.from(document.querySelectorAll('.preview-edit-chrome'));
+let previewEditorPresented = false;
+let previewEditorTransitionId = 0;
+let previewEditorTransition = Promise.resolve(true);
+let previewEditViewportWidth = window.innerWidth;
 
 let previewVisible = PREVIEW_ENABLED && _savedPrefs?.previewVisible === true;
 let mobilePanel = previewVisible && _savedPrefs?.mobilePanel === 'preview' ? 'preview' : 'colors';
@@ -649,14 +654,17 @@ async function renderPreview() {
 
   if (renderNonce !== previewRenderNonce) return;
 
-  const scrollTop = previewContent.scrollTop;
+  const previewScroller = mobileLayout.matches ? document.scrollingElement : previewContent;
+  const scrollTop = previewScroller.scrollTop;
   badge.textContent = title;
   note.textContent = description;
   stage.innerHTML = stageHtml;
   summary.textContent = summaryText;
   buildPreviewTokens(coverage);
   preparePreviewEditing();
-  if (previewEditingKey) previewContent.scrollTop = scrollTop;
+  if (previewEditingKey && previewScroller.scrollTop !== scrollTop) {
+    previewScroller.scrollTop = scrollTop;
+  }
   restoreSavedPreviewColorEditor();
 }
 
@@ -714,14 +722,54 @@ function getEditorRow(key) {
     .find(row => row.dataset.color === key);
 }
 
+function updatePreviewEditorHeight() {
+  if (!previewColorEditor.hidden && mobileLayout.matches) {
+    document.body.style.setProperty('--preview-editor-height', `${previewColorEditor.offsetHeight}px`);
+  }
+}
+
+// CSS owns interpolation; the latest transition alone may hide the dock or
+// restore interaction. Reversals cancel/re-target CSS transitions without timers.
+function syncPreviewEditorPresentation(editing) {
+  const collapsed = editing || Boolean(pendingPreviewEditor && mobileLayout.matches && mobilePanel === 'preview');
+  if (previewEditorPresented === editing && document.body.classList.contains('preview-editing') === collapsed) {
+    return previewEditorTransition;
+  }
+  const transitionId = ++previewEditorTransitionId;
+  previewEditorPresented = editing;
+  previewEditChrome.forEach(chrome => { chrome.inert = true; });
+  previewColorEditor.inert = true;
+  if (editing) previewColorEditor.hidden = false;
+  updatePreviewEditorHeight();
+  // Establish the offscreen starting style before removing/adding the open state.
+  void previewColorEditor.offsetHeight;
+  document.body.classList.add('preview-editor-transitioning');
+  document.body.classList.toggle('preview-editing', collapsed);
+  const elements = [...previewEditChrome, previewColorEditor, previewPanel];
+  const animations = elements.flatMap(element => element.getAnimations());
+  previewEditorTransition = Promise.allSettled(animations.map(animation => animation.finished)).then(() => {
+    if (transitionId !== previewEditorTransitionId) return false;
+    previewColorEditor.hidden = !editing;
+    previewColorEditor.inert = !editing;
+    previewEditChrome.forEach(chrome => { chrome.inert = collapsed; });
+    document.body.classList.remove('preview-editor-transitioning');
+    return true;
+  });
+  return previewEditorTransition;
+}
+
+new ResizeObserver(updatePreviewEditorHeight).observe(previewColorEditor);
+
 function syncPreviewColorEditor() {
   const color = previewEditingKey && theme?.[previewEditingKey]?.[modeKey()];
   const editing = Boolean(color) && mobileLayout.matches;
-  previewColorEditor.hidden = !editing;
-  document.body.classList.toggle('preview-editing', editing || Boolean(pendingPreviewEditor && mobileLayout.matches && mobilePanel === 'preview'));
   const lastColor = lastPreviewEdit && theme?.[lastPreviewEdit.key]?.[modeKey()];
-  btnPreviewLastColor.hidden = !lastColor;
-  previewMobileHint.hidden = Boolean(lastColor);
+  // Reveal the last-color shortcut while the chrome is collapsed on close;
+  // its taller button must not resize the header just before opening animates.
+  if (!editing) {
+    btnPreviewLastColor.hidden = !lastColor;
+    previewMobileHint.hidden = Boolean(lastColor);
+  }
   if (lastColor) {
     previewLastColorName.textContent = lastPreviewEdit.key;
     btnPreviewLastColor.style.setProperty('--last-color', rgbaToCss(lastColor));
@@ -729,11 +777,10 @@ function syncPreviewColorEditor() {
   }
   if (!color) {
     previewEditingKey = null;
-    previewColorName.textContent = '';
     previewPickerHex = null;
     previewPickerMode = null;
     delete previewColorEditor.dataset.linkedKeys;
-    return;
+    return syncPreviewEditorPresentation(editing);
   }
   const hex = rgbaToHex(color);
   if (hex !== previewPickerHex || mode !== previewPickerMode) {
@@ -764,6 +811,7 @@ function syncPreviewColorEditor() {
   btnPreviewColorUndo.disabled = !previewEditOriginal
     || JSON.stringify(theme[previewEditingKey]) === JSON.stringify(previewEditOriginal);
   syncPreviewFavorite();
+  return syncPreviewEditorPresentation(editing);
 }
 
 function getPreviewEditTarget() {
@@ -807,24 +855,44 @@ function rememberPreviewEditTarget(host, key) {
   previewEditTargetIndex = Array.from(previewContent.querySelectorAll('[data-linked-keys]')).indexOf(target);
 }
 
-function scrollPreviewEditTargetIntoView() {
-  const target = getPreviewEditTarget();
+function scrollPreviewEditTargetIntoView(behavior = 'auto', target = getPreviewEditTarget(), center = true) {
   if (!target || !mobileLayout.matches) return;
-  const viewport = previewContent.getBoundingClientRect();
+  const viewportTop = window.visualViewport?.offsetTop || 0;
+  const viewportBottom = viewportTop + (window.visualViewport?.height || window.innerHeight);
+  const bottom = previewEditingKey && !previewColorEditor.hidden
+    ? Math.min(viewportBottom, previewColorEditor.getBoundingClientRect().top) : viewportBottom;
+  const availableHeight = bottom - viewportTop;
   const bounds = target.getBoundingClientRect();
-  const availableHeight = previewContent.clientHeight;
-  // Move only the preview pane, keeping the chosen component above the dock.
+  if (!center && bounds.top >= viewportTop + 12 && bounds.bottom <= bottom - 12) return;
   const offset = bounds.height > availableHeight - 24 ? 12 : (availableHeight - bounds.height) / 2;
-  previewContent.scrollTop += bounds.top - viewport.top - offset;
+  window.scrollBy({ top: bounds.top - viewportTop - offset, behavior });
+}
+
+function previewEditScrollBehavior() {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 }
 
 function updatePreviewEditViewport() {
-  document.body.style.setProperty('--preview-edit-viewport-height', `${window.visualViewport?.height || window.innerHeight}px`);
+  const viewport = window.visualViewport;
+  document.body.style.setProperty('--preview-edit-viewport-height', `${viewport?.height || window.innerHeight}px`);
+  document.body.style.setProperty('--preview-edit-viewport-bottom', `${Math.max(0, window.innerHeight - (viewport?.height || window.innerHeight) - (viewport?.offsetTop || 0))}px`);
 }
 
 function resizePreviewColorEditor() {
+  const widthChanged = previewEditViewportWidth !== window.innerWidth;
+  previewEditViewportWidth = window.innerWidth;
   updatePreviewEditViewport();
-  if (previewEditingKey && mobileLayout.matches) requestAnimationFrame(scrollPreviewEditTargetIntoView);
+  updatePreviewEditorHeight();
+  const editingText = document.activeElement === previewColorHex;
+  if (previewEditingKey && mobileLayout.matches && (widthChanged || editingText)) {
+    requestAnimationFrame(() => {
+      // Accommodate orientation/keyboard changes without fighting document
+      // scrolling when Safari's address bar expands or collapses.
+      if (!document.body.classList.contains('preview-editor-transitioning')) {
+        scrollPreviewEditTargetIntoView('auto', getPreviewEditTarget(), false);
+      }
+    });
+  }
 }
 
 function releasePreviewPickerPointer() {
@@ -843,17 +911,15 @@ function closePreviewColorEditor(restoreFocus = true, rememberColor = true) {
   // A reset/import may already have replaced the theme before blur commits text.
   if (previewColorEditor.contains(document.activeElement)) document.activeElement.blur();
   previewEditOriginal = null;
-  syncPreviewColorEditor();
+  const transition = syncPreviewColorEditor();
   previewContent.querySelector('.preview-edit-target')?.classList.remove('preview-edit-target');
-  if (restoreFocus && target?.isConnected) {
+  transition.then(current => {
+    if (!current || previewEditingKey || !restoreFocus || !target?.isConnected) return;
     const focusTarget = target.matches('[tabindex], button') ? target : target.querySelector('[tabindex], button');
     focusTarget?.focus({ preventScroll: true });
-    const viewport = previewContent.getBoundingClientRect();
-    const bounds = target.getBoundingClientRect();
-    if (bounds.top < viewport.top || bounds.bottom > viewport.bottom) {
-      previewContent.scrollTop += bounds.top - viewport.top - 12;
-    }
-  }
+    scrollPreviewEditTargetIntoView(previewEditScrollBehavior(), target, false);
+    clearHoverHighlights();
+  });
   clearHoverHighlights();
   savePrefs();
 }
@@ -872,14 +938,17 @@ function editPreviewColor(host, sourceHost = host) {
     rememberPreviewEditTarget(sourceHost, key);
     lastPreviewEdit = { key, targetIndex: previewEditTargetIndex, open: true };
     updatePreviewEditViewport();
-    syncPreviewColorEditor();
+    const transition = syncPreviewColorEditor();
     renderPreviewColorHistory();
     previewContent.querySelector('.preview-edit-target')?.classList.remove('preview-edit-target');
     getPreviewEditTarget()?.classList.add('preview-edit-target');
     hoveredLinkedHost = null;
-    previewColorField.focus({ preventScroll: true });
     refreshLinkedHighlights(previewColorField);
-    scrollPreviewEditTargetIntoView();
+    transition.then(current => {
+      if (!current || previewEditingKey !== key) return;
+      previewColorField.focus({ preventScroll: true });
+      scrollPreviewEditTargetIntoView(previewEditScrollBehavior());
+    });
     savePrefs();
     return;
   }
@@ -1050,8 +1119,10 @@ document.addEventListener('keydown', event => {
 });
 mobileLayout.addEventListener('change', () => {
   if (!mobileLayout.matches && previewEditingKey) closePreviewColorEditor(false);
+  else syncPreviewColorEditor();
 });
 window.visualViewport?.addEventListener('resize', resizePreviewColorEditor);
+window.visualViewport?.addEventListener('scroll', updatePreviewEditViewport);
 window.addEventListener('resize', resizePreviewColorEditor);
 
 function isCompactPreviewComponent(element) {
@@ -1297,8 +1368,9 @@ function getLiveLinkedHost(node) {
 
 function refreshLinkedHighlights(focusedNode = document.activeElement) {
   if (mobileLayout.matches && previewEditingKey) {
-    // Keep only the chosen sample outlined while judging its live color.
-    updateHoverHighlights([]);
+    // Persist the selected key, using the same nested-binding ownership rules
+    // as hover. The exact tapped sample retains its separate target outline.
+    updateHoverHighlights([previewEditingKey]);
     return;
   }
   // Rendering may replace a hovered sample. Never retain its detached bindings.
@@ -1764,7 +1836,10 @@ function syncMobilePanel() {
   btnMobilePreview.disabled = !PREVIEW_ENABLED;
 }
 
+const mobilePanelScroll = { colors: 0, preview: 0 };
+
 function setMobilePanel(panel) {
+  if (mobileLayout.matches) mobilePanelScroll[mobilePanel] = window.scrollY;
   if (previewEditingKey) closePreviewColorEditor(false);
   mobilePanel = panel === 'preview' && PREVIEW_ENABLED ? 'preview' : 'colors';
   if (mobilePanel === 'preview') {
@@ -1773,6 +1848,7 @@ function setMobilePanel(panel) {
     syncMobilePanel();
     savePrefs();
   }
+  if (mobileLayout.matches) window.scrollTo(0, mobilePanelScroll[mobilePanel]);
 }
 
 btnMobileColors.addEventListener('click', () => setMobilePanel('colors'));
